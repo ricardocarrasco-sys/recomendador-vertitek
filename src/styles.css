@@ -1,0 +1,34 @@
+/* Estilos simples (sin Tailwind) */
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, 'Noto Sans', 'Helvetica Neue', sans-serif; background: #fff; color: #111; }
+.container { max-width: 1100px; margin: 0 auto; padding: 18px; }
+.h1 { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+.sub { margin: 0 0 18px; color: #555; font-size: 14px; }
+.grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 980px) { .grid { grid-template-columns: 3fr 2fr; } }
+.card { border: 1px solid #e6e6e6; border-radius: 16px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); background: #fff; }
+.badge { display:inline-flex; align-items:center; gap:6px; padding: 6px 10px; border-radius: 999px; font-size: 12px; background:#f2f2f2; }
+.badge.primary { background:#111; color:#fff; }
+.badge.warn { background:#fff3cd; }
+.badge.ok { background:#d1e7dd; }
+.badge.err { background:#f8d7da; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+hr { border:0; border-top:1px solid #eee; margin: 14px 0; }
+label { display:block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+input, select, textarea { width:100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #ddd; font-size: 14px; }
+textarea { min-height: 90px; resize: vertical; }
+.help { font-size: 12px; color:#666; margin-top: 6px; }
+.cols2 { display:grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px){ .cols2 { grid-template-columns: 1fr 1fr; } }
+.btnbar { display:flex; justify-content:space-between; gap: 10px; margin-top: 16px; }
+button { border: 1px solid #ddd; background: #fff; padding: 10px 12px; border-radius: 14px; cursor:pointer; font-weight:600; }
+button.primary { background:#111; color:#fff; border-color:#111; }
+button:disabled { opacity: .5; cursor:not-allowed; }
+.small { font-size: 12px; color:#666; }
+.kpi { background:#f7f7f7; border-radius: 14px; padding: 10px; }
+.ul { margin: 8px 0 0; padding-left: 18px; }
+.notice { border:1px solid #eee; border-radius: 14px; padding: 12px; background:#fafafa; }
+.notice.err { border-color:#f2b8b8; background:#fff5f5; }
+.preview { display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.preview img { width:100%; height: 130px; object-fit:cover; border-radius: 14px; border:1px solid #eee; }
