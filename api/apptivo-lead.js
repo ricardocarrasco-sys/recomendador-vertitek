@@ -1,6 +1,136 @@
 // api/apptivo-lead.js
+// Crea Lead en Apptivo y rellena CUSTOM FIELDS automáticamente usando getConfigData
+// Requiere env vars en Vercel: APPTIVO_API_KEY, APPTIVO_ACCESS_KEY
+
+const TARGET_FIELDS = [
+  // Mapeo "Nombre visible en Apptivo" -> key en payload
+  { label: "Cliente", key: "companyName" },                 // Nombre empresa
+  { label: "Rut", key: "companyRut" },                      // RUT empresa
+
+  { label: "Altura requerida", key: "heightM" },
+  { label: "Alcance requerido", key: "reachM" },
+  { label: "Inclinación terreno", key: "slopeDeg" },
+
+  { label: "Tipo de acceso", key: "accessType" },
+  { label: "Ancho acceso", key: "accessWidthCm" },
+  { label: "Altura acceso", key: "accessHeightCm" },
+
+  { label: "Peso max ascensor", key: "elevatorMaxKg" },
+  { label: "Cabina ascensor ancho", key: "elevatorCabinWidthCm" },
+  { label: "Cabina ascensor fondo", key: "elevatorCabinDepthCm" },
+];
+
+// Cache simple en memoria (Vercel serverless puede reutilizarlo entre requests)
+let cachedConfig = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutos
+
+function splitName(full) {
+  const s = String(full || "").trim();
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { firstName: s, lastName: s };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+}
+
+function normalizePhone(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("56")) return `+${digits}`;
+  if (digits.length >= 8) return `+56${digits}`;
+  return `+${digits}`;
+}
+
+// Busca recursivamente un atributo por su “label” (Cliente, Rut, etc.)
+function findAttributeByLabel(obj, wantedLabel) {
+  const labelNorm = String(wantedLabel || "").trim().toLowerCase();
+
+  const stack = [obj];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur) continue;
+
+    if (Array.isArray(cur)) {
+      for (const it of cur) stack.push(it);
+      continue;
+    }
+    if (typeof cur !== "object") continue;
+
+    // Heurística: detecta nodos con id + type + algún nombre/label
+    const possibleId =
+      cur.attributeId || cur.customAttributeId || cur.id || null;
+
+    const possibleType =
+      cur.attributeType || cur.customAttributeType || cur.type || null;
+
+    const possibleLabel =
+      cur.label ||
+      cur.displayName ||
+      cur.attributeNameMeaning ||
+      cur.attributeName ||
+      cur.customAttributeName ||
+      cur.name ||
+      null;
+
+    if (possibleId && possibleType && possibleLabel) {
+      const curLabelNorm = String(possibleLabel).trim().toLowerCase();
+      if (curLabelNorm === labelNorm) {
+        return { id: String(possibleId), type: String(possibleType) };
+      }
+    }
+
+    // seguir recorriendo
+    for (const k of Object.keys(cur)) stack.push(cur[k]);
+  }
+
+  return null;
+}
+
+function mkCustomAttr({ id, type }, value) {
+  // Formato alineado al ejemplo de customAttributes en updateLead :contentReference[oaicite:1]{index=1}
+  const v = value == null ? "" : String(value);
+  return {
+    customAttributeId: id,
+    customAttributeType: type,
+    customAttributeValue: v,
+    customAttributeTagName: id,
+    customAttributeName: id,
+    [id]: v,
+  };
+}
+
+async function getLeadsConfig({ apiKey, accessKey }) {
+  const now = Date.now();
+  if (cachedConfig && now - cachedAt < CACHE_TTL_MS) return cachedConfig;
+
+  const url = new URL("https://api.apptivo.com/app/dao/v6/leads");
+  url.searchParams.set("a", "getConfigData");
+  url.searchParams.set("apiKey", apiKey);
+  url.searchParams.set("accessKey", accessKey);
+
+  const resp = await fetch(url.toString(), { method: "GET" });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`getConfigData error (${resp.status}): ${text}`);
+  }
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("getConfigData did not return JSON");
+  }
+
+  cachedConfig = data;
+  cachedAt = now;
+  return data;
+}
+
 export default async function handler(req, res) {
-  // CORS básico (por si lo abren desde un embed/preview)
+  // CORS básico (útil si está embebido en Wix)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -11,119 +141,119 @@ export default async function handler(req, res) {
   try {
     const apiKey = process.env.APPTIVO_API_KEY;
     const accessKey = process.env.APPTIVO_ACCESS_KEY;
-
     if (!apiKey || !accessKey) {
-      return res.status(500).json({
-        ok: false,
-        error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY in Vercel env vars",
-      });
+      return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
     }
 
-    const body = req.body || {};
+    const b = req.body || {};
 
-    // Datos obligatorios para ustedes
-    const companyName = String(body.companyName || "").trim();
-    const companyRut = String(body.companyRut || "").trim();
-    const contactName = String(body.contactName || "").trim();
-    const contactPhone = String(body.contactPhone || "").trim();
-    const contactEmail = String(body.contactEmail || "").trim();
+    // Obligatorios
+    const companyName = String(b.companyName || "").trim();
+    const companyRut = String(b.companyRut || "").trim();
+    const contactName = String(b.contactName || "").trim();
+    const contactPhone = normalizePhone(b.contactPhone);
+    const contactEmail = String(b.contactEmail || "").trim();
 
     if (!companyName || !companyRut || !contactName || !contactPhone || !contactEmail) {
       return res.status(400).json({
         ok: false,
-        error: "Missing required fields",
-        missing: {
-          companyName: !companyName,
-          companyRut: !companyRut,
-          contactName: !contactName,
-          contactPhone: !contactPhone,
-          contactEmail: !contactEmail,
-        },
+        error: "Faltan campos obligatorios (empresa/contacto).",
       });
     }
+    if (!isValidEmail(contactEmail)) {
+      return res.status(400).json({ ok: false, error: "Correo inválido." });
+    }
 
-    // Armamos un "leadData" mínimo y robusto.
-    // Apptivo indica que el único obligatorio para crear leads es Last Name. :contentReference[oaicite:2]{index=2}
-    // Igual mandamos email/phone y metemos TODO lo técnico en description para no depender de IDs de custom fields.
-    const descriptionLines = [
-      `Solicitud de cotización desde Recomendador Spider (Vertitek)`,
-      ``,
+    // Traer config para mapear labels -> ids
+    const cfg = await getLeadsConfig({ apiKey, accessKey });
+
+    const missing = [];
+    const customAttributes = [];
+
+    for (const f of TARGET_FIELDS) {
+      const meta = findAttributeByLabel(cfg, f.label);
+      const val =
+        f.key === "companyName" ? companyName :
+        f.key === "companyRut" ? companyRut :
+        b[f.key];
+
+      if (meta) {
+        const v = val == null ? "" : String(val);
+        // Evitar mandar vacíos (opcional)
+        if (v !== "") customAttributes.push(mkCustomAttr(meta, v));
+      } else {
+        missing.push(f.label);
+      }
+    }
+
+    const { firstName, lastName } = splitName(contactName);
+
+    // Igual dejamos description como respaldo (por si algún campo no existe / cambian labels)
+    const desc = [
+      "Solicitud de cotización desde Recomendador Spider (VertiTek)",
+      "",
       `EMPRESA: ${companyName}`,
       `RUT: ${companyRut}`,
       `CONTACTO: ${contactName}`,
       `TEL: ${contactPhone}`,
       `EMAIL: ${contactEmail}`,
-      ``,
-      `DATOS TÉCNICOS:`,
-      `- Altura requerida (m): ${body.heightM ?? ""}`,
-      `- Alcance requerido (m): ${body.reachM ?? ""}`,
-      `- Inclinación terreno (°): ${body.slopeDeg ?? ""}`,
-      `- Tipo de acceso: ${body.accessType ?? ""}`,
-      `- Ancho acceso (cm): ${body.accessWidthCm ?? ""}`,
-      `- Altura acceso (cm): ${body.accessHeightCm ?? ""}`,
-      `- Ascensor máx (kg): ${body.elevatorMaxKg ?? ""}`,
-      `- Cabina ascensor ancho (cm): ${body.elevatorCabinWidthCm ?? ""}`,
-      `- Cabina ascensor fondo (cm): ${body.elevatorCabinDepthCm ?? ""}`,
-      ``,
-      `RECOMENDACIÓN:`,
-      `- Equipo recomendado: ${body.recommendedModel ?? ""}`,
-      `- Motivo: ${body.recommendationReason ?? ""}`,
-      ``,
-      `LEGAL: Recomendación basada en información entregada por el cliente y fichas técnicas. La decisión final es del cliente.`,
-    ];
+      "",
+      "DATOS TÉCNICOS",
+      `- Altura requerida (m): ${b.heightM ?? ""}`,
+      `- Alcance requerido (m): ${b.reachM ?? ""}`,
+      `- Inclinación terreno (°): ${b.slopeDeg ?? ""}`,
+      `- Tipo de acceso: ${b.accessType ?? ""}`,
+      `- Ancho acceso (cm): ${b.accessWidthCm ?? ""}`,
+      `- Altura acceso (cm): ${b.accessHeightCm ?? ""}`,
+      `- Peso max ascensor (kg): ${b.elevatorMaxKg ?? ""}`,
+      `- Cabina ascensor ancho (cm): ${b.elevatorCabinWidthCm ?? ""}`,
+      `- Cabina ascensor fondo (cm): ${b.elevatorCabinDepthCm ?? ""}`,
+      "",
+      "RECOMENDACIÓN",
+      `- Equipo recomendado: ${b.recommendedModel ?? ""}`,
+      `- Motivo: ${b.recommendationReason ?? ""}`,
+      "",
+      "LEGAL",
+      String(b.legalText || ""),
+    ].filter(Boolean).join("\n");
 
+    // createLead soporta customAttributes[] dentro de leadData :contentReference[oaicite:2]{index=2}
     const leadData = {
-      // "Last Name" es el mínimo requerido en Apptivo Leads. :contentReference[oaicite:3]{index=3}
-      lastName: contactName || companyName,
-      description: descriptionLines.join("\n"),
-
+      firstName,
+      lastName: lastName || firstName || companyName,
+      description: desc,
       emailAddresses: [
-        {
-          emailAddress: contactEmail,
-          emailTypeCode: "BUSINESS",
-          emailType: "Business",
-          id: "cont_email_input",
-        },
+        { emailAddress: contactEmail, emailTypeCode: "BUSINESS", emailType: "Business", id: "cont_email_input" },
       ],
       phoneNumbers: [
-        {
-          phoneNumber: contactPhone,
-          phoneTypeCode: "MOBILE",
-          phoneType: "Mobile",
-          id: "cont_phone_input",
-        },
+        { phoneNumber: contactPhone, phoneTypeCode: "MOBILE", phoneType: "Mobile", id: "lead_phone_input" },
       ],
+      customAttributes,
     };
 
-    // Endpoint oficial createLead (DAO v6) :contentReference[oaicite:4]{index=4}
     const url = new URL("https://api.apptivo.com/app/dao/v6/leads");
     url.searchParams.set("a", "save");
     url.searchParams.set("apiKey", apiKey);
     url.searchParams.set("accessKey", accessKey);
     url.searchParams.set("leadData", JSON.stringify(leadData));
 
-    const apptivoResp = await fetch(url.toString(), { method: "GET" });
-    const text = await apptivoResp.text();
+    const resp = await fetch(url.toString(), { method: "GET" });
+    const text = await resp.text();
 
-    if (!apptivoResp.ok) {
-      return res.status(502).json({
-        ok: false,
-        error: "Apptivo API error",
-        status: apptivoResp.status,
-        body: text,
-      });
+    if (!resp.ok) {
+      return res.status(502).json({ ok: false, error: "Apptivo API error", status: resp.status, body: text });
     }
 
-    // Apptivo responde JSON, pero por seguridad lo parseamos con try/catch
     let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
-    }
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
-    return res.status(200).json({ ok: true, apptivo: data });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err?.message || "Unknown error" });
+    return res.status(200).json({
+      ok: true,
+      apptivo: data,
+      mappedCustomFields: customAttributes.length,
+      missingCustomFieldLabels: missing, // si aparece algo aquí, es porque el label no coincide EXACTO
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || "Unknown error" });
   }
 }
