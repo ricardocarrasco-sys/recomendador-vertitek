@@ -1,52 +1,38 @@
 // api/apptivo-lead.js
-// Recomendador VertiTek -> Apptivo Leads
-// - POST: crea lead y rellena custom fields (customAttributes) automáticamente
-// - GET ?debug=1: muestra campos detectados (labels + ids) para verificar mapeo
-//
-// Env vars (Vercel):
-// - APPTIVO_API_KEY
-// - APPTIVO_ACCESS_KEY
+// Apptivo Leads: mapeo real de campos usando referenceFields (más confiable que webLayout)
+// Debug: GET /api/apptivo-lead?debug=1
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedConfig = null;
 let cachedAt = 0;
 
-// Mapeo "lo que queremos llenar" -> cómo puede llamarse en Apptivo (variantes)
 const TARGET_FIELDS = [
-  { wanted: ["cliente", "nombre empresa", "empresa", "razon social"], key: "companyName" },
-  { wanted: ["rut", "rut empresa", "r.u.t", "r u t"], key: "companyRut" },
+  { wanted: ["cliente"], key: "companyName" },
+  { wanted: ["rut"], key: "companyRut" },
 
-  { wanted: ["altura requerida", "altura", "altura requerida m", "altura (m)", "altura requerida (m)"], key: "heightM" },
-  { wanted: ["alcance requerido", "alcance", "alcance requerido m", "alcance (m)", "alcance requerido (m)"], key: "reachM" },
-  { wanted: ["inclinacion terreno", "inclinacion", "pendiente", "pendiente terreno", "inclinacion del terreno"], key: "slopeDeg" },
+  { wanted: ["altura requerida"], key: "heightM" },
+  { wanted: ["alcance requerido"], key: "reachM" },
+  { wanted: ["inclinacion terreno", "inclinación terreno", "pendiente"], key: "slopeDeg" },
 
-  { wanted: ["tipo de acceso", "acceso", "tipo acceso"], key: "accessType" },
-  { wanted: ["ancho acceso", "ancho de acceso", "ancho"], key: "accessWidthCm" },
-  { wanted: ["altura acceso", "alto acceso", "altura de acceso", "alto de acceso"], key: "accessHeightCm" },
+  { wanted: ["tipo de acceso"], key: "accessType" },
+  { wanted: ["ancho acceso"], key: "accessWidthCm" },
+  { wanted: ["altura acceso"], key: "accessHeightCm" },
 
-  { wanted: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor", "max kg ascensor", "peso máximo ascensor"], key: "elevatorMaxKg" },
-  { wanted: ["cabina ascensor ancho", "ancho cabina ascensor", "ancho cabina"], key: "elevatorCabinWidthCm" },
-  { wanted: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina", "cabina profundidad"], key: "elevatorCabinDepthCm" },
+  { wanted: ["peso max ascensor", "peso máximo ascensor"], key: "elevatorMaxKg" },
+  { wanted: ["cabina ascensor ancho"], key: "elevatorCabinWidthCm" },
+  { wanted: ["cabina ascensor fondo"], key: "elevatorCabinDepthCm" },
 ];
 
 function normalizeLabel(s) {
   return String(s || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")        // tildes fuera
-    .replace(/\(.*?\)/g, " ")              // quita paréntesis (m), (cm), etc
-    .replace(/[^a-z0-9]+/g, " ")           // deja letras/numeros
-    .replace(/\b(m|cm|kg|mts|mt)\b/g, " ")  // quita unidades sueltas
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\(.*?\)/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(m|cm|kg|mts|mt)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function tryParseJsonString(s) {
-  if (typeof s !== "string") return null;
-  const t = s.trim();
-  if (!t) return null;
-  if (!(t.startsWith("{") || t.startsWith("["))) return null;
-  try { return JSON.parse(t); } catch { return null; }
 }
 
 function isValidEmail(email) {
@@ -72,67 +58,12 @@ function mkCustomAttr({ id, type }, value) {
   const v = value == null ? "" : String(value);
   return {
     customAttributeId: id,
-    customAttributeType: type,
+    customAttributeType: type || "text",
     customAttributeValue: v,
     customAttributeTagName: id,
     customAttributeName: id,
     [id]: v,
   };
-}
-
-// Extrae posibles atributos desde cfg/webLayout aunque venga como JSON string
-function extractAttributes(cfg) {
-  const out = [];
-  const seen = new Set();
-  const stack = [cfg];
-
-  while (stack.length) {
-    const cur = stack.pop();
-    if (!cur) continue;
-
-    // Si es string y parece JSON (ej: webLayout), lo parseamos y seguimos
-    const parsed = tryParseJsonString(cur);
-    if (parsed) {
-      stack.push(parsed);
-      continue;
-    }
-
-    if (Array.isArray(cur)) {
-      for (const it of cur) stack.push(it);
-      continue;
-    }
-    if (typeof cur !== "object") continue;
-
-    const id = cur.attributeId || cur.customAttributeId || cur.id || null;
-    const type = cur.attributeType || cur.customAttributeType || cur.type || cur.dataType || null;
-
-    const label =
-      cur.label ||
-      cur.displayName ||
-      cur.attributeNameMeaning ||
-      cur.attributeName ||
-      cur.customAttributeName ||
-      cur.name ||
-      cur.title ||
-      null;
-
-    if (id && type && label) {
-      const key = `${id}::${label}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({
-          id: String(id),
-          type: String(type),
-          label: String(label),
-          norm: normalizeLabel(label),
-        });
-      }
-    }
-
-    for (const k of Object.keys(cur)) stack.push(cur[k]);
-  }
-
-  return out;
 }
 
 async function getLeadsConfig({ apiKey, accessKey }) {
@@ -156,12 +87,82 @@ async function getLeadsConfig({ apiKey, accessKey }) {
   return data;
 }
 
+// ✅ Extrae campos reales desde referenceFields
+function extractFromReferenceFields(cfg) {
+  const rf = cfg?.referenceFields;
+  const found = [];
+
+  // referenceFields puede venir como array, objeto, o incluir "fields"
+  const stack = [rf];
+  const seen = new Set();
+
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur) continue;
+
+    if (Array.isArray(cur)) {
+      for (const it of cur) stack.push(it);
+      continue;
+    }
+    if (typeof cur !== "object") continue;
+
+    // Heurísticas: muchos configs usan fieldId/attributeId + displayName/label/name + fieldType/dataType
+    const id =
+      cur.fieldId ||
+      cur.attributeId ||
+      cur.customAttributeId ||
+      cur.id ||
+      null;
+
+    const label =
+      cur.displayName ||
+      cur.label ||
+      cur.name ||
+      cur.attributeNameMeaning ||
+      cur.attributeName ||
+      cur.customAttributeName ||
+      null;
+
+    const type =
+      cur.fieldType ||
+      cur.dataType ||
+      cur.attributeType ||
+      cur.customAttributeType ||
+      cur.type ||
+      null;
+
+    if (id && label) {
+      const key = `${id}::${label}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        found.push({
+          id: String(id),
+          label: String(label),
+          norm: normalizeLabel(label),
+          type: String(type || "text"),
+          rawType: type,
+        });
+      }
+    }
+
+    for (const k of Object.keys(cur)) stack.push(cur[k]);
+  }
+
+  return found;
+}
+
+function buildIndex(fields) {
+  const byNorm = new Map();
+  for (const f of fields) {
+    if (!byNorm.has(f.norm)) byNorm.set(f.norm, f);
+  }
+  return byNorm;
+}
+
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") return res.status(204).end();
 
   const apiKey = process.env.APPTIVO_API_KEY;
@@ -170,29 +171,25 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
   }
 
-  // ✅ DEBUG: muestra campos detectados, incluyendo los que estén en webLayout (string JSON)
+  // DEBUG: muestra lo que referenceFields realmente contiene
   if (req.method === "GET" && String(req.query?.debug || "") === "1") {
     const cfg = await getLeadsConfig({ apiKey, accessKey });
-    const webLayoutParsed = tryParseJsonString(cfg.webLayout);
-    const attrs = extractAttributes(webLayoutParsed || cfg);
+    const extracted = extractFromReferenceFields(cfg);
 
     return res.status(200).json({
       ok: true,
-      webLayoutType: typeof cfg.webLayout,
-      webLayoutParsed: Boolean(webLayoutParsed),
-      totalExtracted: attrs.length,
-      // mostramos muestra ordenada para que puedas buscar "Cliente", "Rut", etc.
-      sample: attrs
+      hasReferenceFields: cfg.referenceFields != null,
+      referenceFieldsType: typeof cfg.referenceFields,
+      extractedCount: extracted.length,
+      sample: extracted
         .sort((a, b) => a.label.localeCompare(b.label))
-        .slice(0, 120)
-        .map(a => ({ label: a.label, norm: a.norm, id: a.id, type: a.type })),
-      note: "Usa Ctrl+F en el JSON del navegador para buscar Cliente/Rut/Altura. Si totalExtracted=0, avísame.",
+        .slice(0, 200)
+        .map(x => ({ label: x.label, norm: x.norm, id: x.id, type: x.type })),
+      note: "Busca aquí Cliente/Rut/Altura/etc. Este sample SÍ debería mostrar nombres reales.",
     });
   }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   try {
     const b = req.body || {};
@@ -211,14 +208,8 @@ export default async function handler(req, res) {
     }
 
     const cfg = await getLeadsConfig({ apiKey, accessKey });
-    const webLayoutParsed = tryParseJsonString(cfg.webLayout);
-    const attrs = extractAttributes(webLayoutParsed || cfg);
-
-    // índice por label normalizado
-    const byNorm = new Map();
-    for (const a of attrs) {
-      if (!byNorm.has(a.norm)) byNorm.set(a.norm, a);
-    }
+    const fields = extractFromReferenceFields(cfg);
+    const byNorm = buildIndex(fields);
 
     const missing = [];
     const matched = [];
@@ -305,7 +296,6 @@ export default async function handler(req, res) {
 
     const resp = await fetch(url.toString(), { method: "GET" });
     const text = await resp.text();
-
     if (!resp.ok) {
       return res.status(502).json({ ok: false, error: "Apptivo API error", status: resp.status, body: text });
     }
@@ -319,6 +309,7 @@ export default async function handler(req, res) {
       mappedCustomFields: customAttributes.length,
       missingCustomFieldLabels: missing,
       matched,
+      referenceFieldsExtracted: fields.length,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || "Unknown error" });
