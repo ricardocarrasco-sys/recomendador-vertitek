@@ -185,7 +185,7 @@ export default function App(){
   const [step,setStep]=useState(1); // 1..4
   const [submitStatus,setSubmitStatus]=useState(null);
 
-  const [heightM,setHeightM]=useState(18);
+  const [heightM,setHeightM]=useState("");
   const [outreachM,setOutreachM]=useState("");
   const [accessType,setAccessType]=useState("puerta");
   const [accessWidthCm,setAccessWidthCm]=useState("");
@@ -316,7 +316,7 @@ export default function App(){
     <div className="container">
       <div className="row">
         <div>
-          <div className="h1">Recomendador Spider – Grupo Vertikal</div>
+          <div className="h1">Recomendador Spider - VertiTek</div>
           <div className="sub">Recomendación técnica + cotización formal. (Fotos se solicitan luego si aplica.)</div>
         </div>
         <span className="badge">Paso {step} de 4</span>
@@ -341,7 +341,7 @@ export default function App(){
               <div className="cols2">
                 <div>
                   <label>Altura requerida (m) ⭐</label>
-                  <input type="number" min="1" value={heightM} onChange={(e)=>setHeightM(e.target.value)} />
+                  <input type="number" min="1" value={heightM} placeholder="Ej: 18" onChange={(e)=>setHeightM(e.target.value)} />
                 </div>
                 <div>
                   <label>Alcance horizontal requerido (m) (opcional)</label>
@@ -553,7 +553,7 @@ export default function App(){
 
                 <div className="btnbar" style={{marginTop:12}}>
                   <button className="primary" onClick={submitToApptivo} disabled={!top || submitStatus?.kind==="loading"}>
-                    Solicitar cotización
+                    Solicitar información
                   </button>
                   <button className="secondary" onClick={()=>window.open(whatsappUrl,"_blank")} disabled={!top}>
                     WhatsApp (opcional)
@@ -581,7 +581,7 @@ export default function App(){
               {step===1 && !step1Ok ? (isElevator ? "Ascensor: completa alto + peso + cabina." : "Completa altura y ancho.") : null}
               {step===3 && !step3Ok ? "Completa datos para cotización." : null}
             </div>
-            <button className="primary" onClick={()=>setStep(s=>Math.min(4,s+1))} disabled={!canGoNext}>Siguiente</button>
+            {step<4 ? (<button className="primary" onClick={()=>setStep(s=>Math.min(4,s+1))} disabled={!canGoNext}>Siguiente</button>) : (<span />)}
           </div>
         </div>
 
