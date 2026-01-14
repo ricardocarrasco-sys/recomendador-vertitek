@@ -1,33 +1,40 @@
 // api/apptivo-lead.js
-// Crea Lead en Apptivo y rellena CUSTOM FIELDS automáticamente usando getConfigData
-// Requiere env vars en Vercel: APPTIVO_API_KEY, APPTIVO_ACCESS_KEY
+// - Crea Lead en Apptivo
+// - Mapea custom fields automáticamente usando getConfigData
+// - Matching tolerante (sin tildes, sin unidades, etc.)
+// - Modo DEBUG: GET /api/apptivo-lead?debug=1  (muestra labels disponibles)
 
-const TARGET_FIELDS = [
-  { labels: ["cliente", "nombre cliente", "empresa"], key: "companyName" },
-  { labels: ["rut", "r.u.t", "rut empresa"], key: "companyRut" },
-
-  { labels: ["altura requerida", "altura requerida m", "altura"], key: "heightM" },
-  { labels: ["alcance requerido", "alcance"], key: "reachM" },
-  { labels: ["inclinacion terreno", "inclinacion del terreno", "pendiente"], key: "slopeDeg" },
-
-  { labels: ["tipo de acceso", "acceso"], key: "accessType" },
-  { labels: ["ancho acceso", "ancho de acceso"], key: "accessWidthCm" },
-  { labels: ["altura acceso", "alto acceso", "altura de acceso"], key: "accessHeightCm" },
-
-  { labels: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor"], key: "elevatorMaxKg" },
-  { labels: ["cabina ascensor ancho", "ancho cabina ascensor"], key: "elevatorCabinWidthCm" },
-  { labels: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina"], key: "elevatorCabinDepthCm" },
-];
-// Cache simple en memoria (Vercel serverless puede reutilizarlo entre requests)
+const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedConfig = null;
 let cachedAt = 0;
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutos
 
-function splitName(full) {
-  const s = String(full || "").trim();
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return { firstName: s, lastName: s };
-  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+const TARGET_FIELDS = [
+  { wanted: ["cliente", "nombre empresa", "empresa", "razon social"], key: "companyName" },
+  { wanted: ["rut", "rut empresa", "r.u.t"], key: "companyRut" },
+
+  { wanted: ["altura requerida", "altura", "altura requerida m", "altura (m)"], key: "heightM" },
+  { wanted: ["alcance requerido", "alcance", "alcance requerido m", "alcance (m)"], key: "reachM" },
+  { wanted: ["inclinacion terreno", "inclinacion", "pendiente", "pendiente terreno"], key: "slopeDeg" },
+
+  { wanted: ["tipo de acceso", "acceso", "tipo acceso"], key: "accessType" },
+  { wanted: ["ancho acceso", "ancho de acceso", "ancho"], key: "accessWidthCm" },
+  { wanted: ["altura acceso", "alto acceso", "altura de acceso", "alto de acceso"], key: "accessHeightCm" },
+
+  { wanted: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor", "max kg ascensor"], key: "elevatorMaxKg" },
+  { wanted: ["cabina ascensor ancho", "ancho cabina ascensor", "ancho cabina"], key: "elevatorCabinWidthCm" },
+  { wanted: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina", "cabina profundidad"], key: "elevatorCabinDepthCm" },
+];
+
+function normalizeLabel(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")        // quita tildes
+    .replace(/\(.*?\)/g, " ")              // quita (m), (cm), etc.
+    .replace(/[^a-z0-9]+/g, " ")           // deja solo letras/números
+    .replace(/\b(m|cm|kg|mts|mt)\b/g, " ")  // quita unidades sueltas
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isValidEmail(email) {
@@ -42,11 +49,31 @@ function normalizePhone(raw) {
   return `+${digits}`;
 }
 
-// Busca recursivamente un atributo por su “label” (Cliente, Rut, etc.)
-function findAttributeByLabel(obj, wantedLabel) {
-  const labelNorm = String(wantedLabel || "").trim().toLowerCase();
+function splitName(full) {
+  const s = String(full || "").trim();
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { firstName: s, lastName: s };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
 
-  const stack = [obj];
+function mkCustomAttr({ id, type }, value) {
+  const v = value == null ? "" : String(value);
+  return {
+    customAttributeId: id,
+    customAttributeType: type,
+    customAttributeValue: v,
+    customAttributeTagName: id,
+    customAttributeName: id,
+    [id]: v,
+  };
+}
+
+// Recorre getConfigData y extrae todos los atributos “probables”
+function extractAttributes(cfg) {
+  const out = [];
+  const seen = new Set();
+  const stack = [cfg];
+
   while (stack.length) {
     const cur = stack.pop();
     if (!cur) continue;
@@ -57,47 +84,36 @@ function findAttributeByLabel(obj, wantedLabel) {
     }
     if (typeof cur !== "object") continue;
 
-    // Heurística: detecta nodos con id + type + algún nombre/label
-    const possibleId =
-      cur.attributeId || cur.customAttributeId || cur.id || null;
+    const id = cur.attributeId || cur.customAttributeId || cur.id || null;
+    const type = cur.attributeType || cur.customAttributeType || cur.type || null;
 
-    const possibleType =
-      cur.attributeType || cur.customAttributeType || cur.type || null;
-
-    const possibleLabel =
+    const label =
       cur.label ||
       cur.displayName ||
       cur.attributeNameMeaning ||
       cur.attributeName ||
       cur.customAttributeName ||
       cur.name ||
+      cur.title ||
       null;
 
-    if (possibleId && possibleType && possibleLabel) {
-      const curLabelNorm = String(possibleLabel).trim().toLowerCase();
-      if (curLabelNorm === labelNorm) {
-        return { id: String(possibleId), type: String(possibleType) };
+    if (id && type && label) {
+      const key = `${id}::${label}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({
+          id: String(id),
+          type: String(type),
+          label: String(label),
+          norm: normalizeLabel(label),
+        });
       }
     }
 
-    // seguir recorriendo
     for (const k of Object.keys(cur)) stack.push(cur[k]);
   }
 
-  return null;
-}
-
-function mkCustomAttr({ id, type }, value) {
-  // Formato alineado al ejemplo de customAttributes en updateLead :contentReference[oaicite:1]{index=1}
-  const v = value == null ? "" : String(value);
-  return {
-    customAttributeId: id,
-    customAttributeType: type,
-    customAttributeValue: v,
-    customAttributeTagName: id,
-    customAttributeName: id,
-    [id]: v,
-  };
+  return out;
 }
 
 async function getLeadsConfig({ apiKey, accessKey }) {
@@ -111,16 +127,11 @@ async function getLeadsConfig({ apiKey, accessKey }) {
 
   const resp = await fetch(url.toString(), { method: "GET" });
   const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`getConfigData error (${resp.status}): ${text}`);
-  }
+
+  if (!resp.ok) throw new Error(`getConfigData error (${resp.status}): ${text}`);
 
   let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error("getConfigData did not return JSON");
-  }
+  try { data = JSON.parse(text); } catch { throw new Error("getConfigData did not return JSON"); }
 
   cachedConfig = data;
   cachedAt = now;
@@ -128,24 +139,41 @@ async function getLeadsConfig({ apiKey, accessKey }) {
 }
 
 export default async function handler(req, res) {
-  // CORS básico (útil si está embebido en Wix)
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(204).end();
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+
+  const apiKey = process.env.APPTIVO_API_KEY;
+  const accessKey = process.env.APPTIVO_ACCESS_KEY;
+  if (!apiKey || !accessKey) {
+    return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
+  }
+
+  // ✅ DEBUG: muestra los labels reales disponibles en tu Apptivo
+  if (req.method === "GET" && String(req.query?.debug || "") === "1") {
+    const cfg = await getLeadsConfig({ apiKey, accessKey });
+    const attrs = extractAttributes(cfg)
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .slice(0, 250); // para no devolver infinito
+
+    return res.status(200).json({
+      ok: true,
+      totalExtracted: extractAttributes(cfg).length,
+      sample: attrs.map(a => ({ label: a.label, norm: a.norm, id: a.id, type: a.type })),
+      note: "Busca aquí los nombres EXACTOS (label) que usa Apptivo para tus custom fields.",
+    });
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
 
   try {
-    const apiKey = process.env.APPTIVO_API_KEY;
-    const accessKey = process.env.APPTIVO_ACCESS_KEY;
-    if (!apiKey || !accessKey) {
-      return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
-    }
-
     const b = req.body || {};
 
-    // Obligatorios
     const companyName = String(b.companyName || "").trim();
     const companyRut = String(b.companyRut || "").trim();
     const contactName = String(b.contactName || "").trim();
@@ -153,23 +181,34 @@ export default async function handler(req, res) {
     const contactEmail = String(b.contactEmail || "").trim();
 
     if (!companyName || !companyRut || !contactName || !contactPhone || !contactEmail) {
-      return res.status(400).json({
-        ok: false,
-        error: "Faltan campos obligatorios (empresa/contacto).",
-      });
+      return res.status(400).json({ ok: false, error: "Faltan campos obligatorios (empresa/contacto)." });
     }
     if (!isValidEmail(contactEmail)) {
       return res.status(400).json({ ok: false, error: "Correo inválido." });
     }
 
-    // Traer config para mapear labels -> ids
     const cfg = await getLeadsConfig({ apiKey, accessKey });
+    const attrs = extractAttributes(cfg);
+
+    // Construye índice por label normalizado
+    const byNorm = new Map();
+    for (const a of attrs) {
+      if (!byNorm.has(a.norm)) byNorm.set(a.norm, a);
+    }
 
     const missing = [];
+    const mapped = [];
     const customAttributes = [];
 
     for (const f of TARGET_FIELDS) {
-      const meta = findAttributeByLabel(cfg, f.label);
+      const wantedNorms = f.wanted.map(normalizeLabel);
+
+      // Busca primer match
+      let meta = null;
+      for (const w of wantedNorms) {
+        if (byNorm.has(w)) { meta = byNorm.get(w); break; }
+      }
+
       const val =
         f.key === "companyName" ? companyName :
         f.key === "companyRut" ? companyRut :
@@ -177,16 +216,17 @@ export default async function handler(req, res) {
 
       if (meta) {
         const v = val == null ? "" : String(val);
-        // Evitar mandar vacíos (opcional)
-        if (v !== "") customAttributes.push(mkCustomAttr(meta, v));
+        if (v !== "") {
+          customAttributes.push(mkCustomAttr(meta, v));
+          mapped.push({ field: f.wanted[0], matchedLabel: meta.label });
+        }
       } else {
-        missing.push(f.label);
+        missing.push(f.wanted[0]);
       }
     }
 
     const { firstName, lastName } = splitName(contactName);
 
-    // Igual dejamos description como respaldo (por si algún campo no existe / cambian labels)
     const desc = [
       "Solicitud de cotización desde Recomendador Spider (VertiTek)",
       "",
@@ -215,7 +255,6 @@ export default async function handler(req, res) {
       String(b.legalText || ""),
     ].filter(Boolean).join("\n");
 
-    // createLead soporta customAttributes[] dentro de leadData :contentReference[oaicite:2]{index=2}
     const leadData = {
       firstName,
       lastName: lastName || firstName || companyName,
@@ -249,7 +288,8 @@ export default async function handler(req, res) {
       ok: true,
       apptivo: data,
       mappedCustomFields: customAttributes.length,
-      missingCustomFieldLabels: missing, // si aparece algo aquí, es porque el label no coincide EXACTO
+      missingCustomFieldLabels: missing,
+      matched: mapped, // para ver qué label real se usó
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || "Unknown error" });
