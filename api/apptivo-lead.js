@@ -3,7 +3,6 @@
 // Requiere env vars en Vercel: APPTIVO_API_KEY, APPTIVO_ACCESS_KEY
 
 const TARGET_FIELDS = [
-  // Mapeo "Nombre visible en Apptivo" -> key en payload
   { labels: ["cliente", "nombre cliente", "empresa"], key: "companyName" },
   { labels: ["rut", "r.u.t", "rut empresa"], key: "companyRut" },
 
@@ -17,8 +16,8 @@ const TARGET_FIELDS = [
 
   { labels: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor"], key: "elevatorMaxKg" },
   { labels: ["cabina ascensor ancho", "ancho cabina ascensor"], key: "elevatorCabinWidthCm" },
-  { labels: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina"], key: "elevatorCabinDepthCm" },];
-
+  { labels: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina"], key: "elevatorCabinDepthCm" },
+];
 // Cache simple en memoria (Vercel serverless puede reutilizarlo entre requests)
 let cachedConfig = null;
 let cachedAt = 0;
