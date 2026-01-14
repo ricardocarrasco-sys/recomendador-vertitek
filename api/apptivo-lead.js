@@ -4,21 +4,20 @@
 
 const TARGET_FIELDS = [
   // Mapeo "Nombre visible en Apptivo" -> key en payload
-  { label: "Cliente", key: "companyName" },                 // Nombre empresa
-  { label: "Rut", key: "companyRut" },                      // RUT empresa
+  { labels: ["cliente", "nombre cliente", "empresa"], key: "companyName" },
+  { labels: ["rut", "r.u.t", "rut empresa"], key: "companyRut" },
 
-  { label: "Altura requerida", key: "heightM" },
-  { label: "Alcance requerido", key: "reachM" },
-  { label: "Inclinación terreno", key: "slopeDeg" },
+  { labels: ["altura requerida", "altura requerida m", "altura"], key: "heightM" },
+  { labels: ["alcance requerido", "alcance"], key: "reachM" },
+  { labels: ["inclinacion terreno", "inclinacion del terreno", "pendiente"], key: "slopeDeg" },
 
-  { label: "Tipo de acceso", key: "accessType" },
-  { label: "Ancho acceso", key: "accessWidthCm" },
-  { label: "Altura acceso", key: "accessHeightCm" },
+  { labels: ["tipo de acceso", "acceso"], key: "accessType" },
+  { labels: ["ancho acceso", "ancho de acceso"], key: "accessWidthCm" },
+  { labels: ["altura acceso", "alto acceso", "altura de acceso"], key: "accessHeightCm" },
 
-  { label: "Peso max ascensor", key: "elevatorMaxKg" },
-  { label: "Cabina ascensor ancho", key: "elevatorCabinWidthCm" },
-  { label: "Cabina ascensor fondo", key: "elevatorCabinDepthCm" },
-];
+  { labels: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor"], key: "elevatorMaxKg" },
+  { labels: ["cabina ascensor ancho", "ancho cabina ascensor"], key: "elevatorCabinWidthCm" },
+  { labels: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina"], key: "elevatorCabinDepthCm" },];
 
 // Cache simple en memoria (Vercel serverless puede reutilizarlo entre requests)
 let cachedConfig = null;
