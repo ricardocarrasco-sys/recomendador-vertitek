@@ -553,7 +553,7 @@ export default function App(){
 
                 <div className="btnbar" style={{marginTop:12}}>
                   <button className="primary" onClick={submitToApptivo} disabled={!top || submitStatus?.kind==="loading"}>
-                    Solicitar información
+                    Solicitar Cotización
                   </button>
                   <button className="secondary" onClick={()=>window.open(whatsappUrl,"_blank")} disabled={!top}>
                     WhatsApp (opcional)
