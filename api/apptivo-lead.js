@@ -1,35 +1,47 @@
 // api/apptivo-lead.js
-// Apptivo Leads - mapeo custom fields desde webLayout (label puede venir como OBJETO)
-// Debug: GET /api/apptivo-lead?debug=1
+// Recomendador VertiTek -> Apptivo Leads
+// POST: crea lead y llena campos (standard + custom) usando IDs del webLayout
+// GET ?debug=1: muestra campos detectados con label limpio (modifiedLabel)
+
+// Env vars (Vercel):
+// - APPTIVO_API_KEY
+// - APPTIVO_ACCESS_KEY
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedConfig = null;
 let cachedAt = 0;
 
-// Campos que quieres llenar (tolerante)
+// ✅ Queremos matchear contra los labels "modifiedLabel" que tu layout tiene
+// (según tu debug real)
 const TARGET_FIELDS = [
-  { wanted: ["cliente", "nombre empresa", "empresa", "razon social"], key: "companyName" },
-  { wanted: ["rut", "rut empresa", "r.u.t", "r u t"], key: "companyRut" },
+  // Empresa / Rut (en tu layout son Standard fields con modifiedLabel "Cliente" y "Rut")
+  { wanted: ["cliente"], key: "companyName" },
+  { wanted: ["rut"], key: "companyRut" },
 
-  { wanted: ["altura requerida", "altura", "altura requerida (m)", "altura (m)"], key: "heightM" },
-  { wanted: ["alcance requerido", "alcance", "alcance requerido (m)", "alcance (m)"], key: "reachM" },
-  { wanted: ["inclinacion terreno", "inclinación terreno", "inclinacion", "pendiente"], key: "slopeDeg" },
+  // Datos trabajo (Custom fields)
+  { wanted: ["altura requerida", "altura requerida mts"], key: "heightM" }, // number_4_1
+  { wanted: ["alcance requerido", "alcance requerido mts"], key: "reachM" }, // number_4_2
+  { wanted: ["inclinacion del terreno", "inclinación del terreno", "inclinacion terreno"], key: "slopeDeg" }, // number_4_6
+  { wanted: ["tipo de acceso"], key: "accessType" }, // select_4_9
+  { wanted: ["ancho disponible en acceso", "ancho acceso"], key: "accessWidthCm" }, // number_4_10
+  { wanted: ["altura disponible en acceso", "altura acceso"], key: "accessHeightCm" }, // number_4_11
 
-  { wanted: ["tipo de acceso", "acceso", "tipo acceso"], key: "accessType" },
-  { wanted: ["ancho acceso", "ancho de acceso", "ancho"], key: "accessWidthCm" },
-  { wanted: ["altura acceso", "alto acceso", "altura de acceso", "alto de acceso"], key: "accessHeightCm" },
+  // Ascensor
+  { wanted: ["capacidad maxima ascensor", "capacidad maxima ascensor kg", "peso max ascensor"], key: "elevatorMaxKg" }, // number_4_12
+  { wanted: ["cabina ascensor ancho"], key: "elevatorCabinWidthCm" }, // number_4_13
+  { wanted: ["cabina ascensor fondo"], key: "elevatorCabinDepthCm" }, // number_4_14
 
-  { wanted: ["peso max ascensor", "peso máximo ascensor", "peso maximo ascensor", "capacidad ascensor"], key: "elevatorMaxKg" },
-  { wanted: ["cabina ascensor ancho", "ancho cabina ascensor", "ancho cabina"], key: "elevatorCabinWidthCm" },
-  { wanted: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina"], key: "elevatorCabinDepthCm" },
+  // Recomendación (Custom fields en tu layout)
+  { wanted: ["equipo recomendado"], key: "recommendedModel" }, // input_4_15
+  { wanted: ["motivo recomendacion", "motivo recomendación"], key: "recommendationReason" }, // textarea_4_16
 ];
 
 function normalizeLabel(s) {
   return String(s || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\(.*?\)/g, " ")
+    .replace(/[\u0300-\u036f]/g, "") // tildes
+    .replace(/\(.*?\)/g, " ") // (cm), (m), etc
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\b(m|cm|kg|mts|mt)\b/g, " ")
     .replace(/\s+/g, " ")
@@ -41,7 +53,11 @@ function tryParseJsonString(s) {
   const t = s.trim();
   if (!t) return null;
   if (!(t.startsWith("{") || t.startsWith("["))) return null;
-  try { return JSON.parse(t); } catch { return null; }
+  try {
+    return JSON.parse(t);
+  } catch {
+    return null;
+  }
 }
 
 function isValidEmail(email) {
@@ -63,47 +79,37 @@ function splitName(full) {
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
-// ✅ Convierte label que puede venir como objeto a texto usable
-function labelToText(label) {
-  if (!label) return "";
-  if (typeof label === "string") return label;
-
-  // Si es un objeto, intentamos claves típicas
-  if (typeof label === "object") {
-    const candidates = [
-      label.text,
-      label.label,
-      label.name,
-      label.title,
-      label.value,
-      label.displayName,
-      label.placeholder,
-    ].filter(Boolean);
-
-    if (candidates.length) return String(candidates[0]);
-
-    // último recurso: stringify (pero sin dejar "[object Object]")
-    try {
-      const s = JSON.stringify(label);
-      // si el JSON contiene algo tipo {"text":"Cliente"} lo convertimos a texto legible
-      if (s && s !== "{}") return s;
-    } catch {}
+// ✅ CLAVE: el label viene como JSON string con modifiedLabel/originalLabel
+function labelToText(rawLabel) {
+  if (!rawLabel) return "";
+  if (typeof rawLabel === "string") {
+    const parsed = tryParseJsonString(rawLabel);
+    if (parsed && typeof parsed === "object") {
+      const m = String(parsed.modifiedLabel || "").trim();
+      const o = String(parsed.originalLabel || "").trim();
+      return m || o || "";
+    }
+    return rawLabel;
   }
-
+  if (typeof rawLabel === "object") {
+    // por si en algún caso ya viene como objeto
+    const m = String(rawLabel.modifiedLabel || "").trim();
+    const o = String(rawLabel.originalLabel || "").trim();
+    const t = String(rawLabel.text || rawLabel.label || rawLabel.name || "").trim();
+    return m || o || t || "";
+  }
   return "";
 }
 
-// ✅ Determina si un id parece “campo” y no sección/placeholder
 function looksLikeFieldId(id) {
   const s = String(id || "");
-  // IDs de controles típicos del layout
   return (
     s.startsWith("input_") ||
     s.startsWith("number_") ||
     s.startsWith("select_") ||
     s.startsWith("textarea_") ||
     s.startsWith("check_") ||
-    s.endsWith("_attr") // campos estándar tipo email_attr, company_attr, etc.
+    s.endsWith("_attr") // standard (email_attr, customer_attr, company_attr, etc.)
   );
 }
 
@@ -119,7 +125,7 @@ function mkCustomAttr({ id, type }, value) {
   };
 }
 
-// ✅ Extrae “campos” del webLayout (string JSON)
+// Extrae campos desde webLayout
 function extractFieldsFromWebLayout(cfg) {
   const parsed = tryParseJsonString(cfg?.webLayout);
   if (!parsed) return [];
@@ -138,13 +144,9 @@ function extractFieldsFromWebLayout(cfg) {
     }
     if (typeof cur !== "object") continue;
 
-    // Id del control / atributo
     const id = cur.attributeId || cur.customAttributeId || cur.id || null;
-
-    // Type (muchas veces viene como "Custom", "Standard", "radio", etc.)
     const type = cur.attributeType || cur.customAttributeType || cur.type || cur.dataType || null;
 
-    // Label puede venir como string o como objeto
     const rawLabel =
       cur.label ||
       cur.displayName ||
@@ -157,24 +159,18 @@ function extractFieldsFromWebLayout(cfg) {
 
     const label = labelToText(rawLabel);
 
-    // Guardamos solo cosas que parezcan campos reales (no secciones)
-    if (id && looksLikeFieldId(id) && label && label !== "[object Object]") {
+    // Guardamos solo campos reales
+    if (id && looksLikeFieldId(id) && label) {
       const norm = normalizeLabel(label);
       const key = `${id}::${norm}`;
       if (!seen.has(key)) {
         seen.add(key);
-        out.push({
-          id: String(id),
-          type: String(type || "text"),
-          label,
-          norm,
-        });
+        out.push({ id: String(id), type: String(type || "text"), label, norm });
       }
     }
 
     for (const k of Object.keys(cur)) {
       const v = cur[k];
-      // si adentro hay strings JSON, los parseamos
       const p = tryParseJsonString(v);
       if (p) stack.push(p);
       else stack.push(v);
@@ -182,6 +178,14 @@ function extractFieldsFromWebLayout(cfg) {
   }
 
   return out;
+}
+
+function buildIndex(fields) {
+  const byNorm = new Map();
+  for (const f of fields) {
+    if (!byNorm.has(f.norm)) byNorm.set(f.norm, f);
+  }
+  return byNorm;
 }
 
 async function getLeadsConfig({ apiKey, accessKey }) {
@@ -205,15 +209,8 @@ async function getLeadsConfig({ apiKey, accessKey }) {
   return data;
 }
 
-function buildIndex(fields) {
-  const byNorm = new Map();
-  for (const f of fields) {
-    if (!byNorm.has(f.norm)) byNorm.set(f.norm, f);
-  }
-  return byNorm;
-}
-
 export default async function handler(req, res) {
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -225,24 +222,23 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
   }
 
-  // ✅ DEBUG: muestra campos que realmente detectamos con labels correctos
+  // ✅ DEBUG
   if (req.method === "GET" && String(req.query?.debug || "") === "1") {
     const cfg = await getLeadsConfig({ apiKey, accessKey });
     const fields = extractFieldsFromWebLayout(cfg);
-
     return res.status(200).json({
       ok: true,
-      webLayoutType: typeof cfg.webLayout,
-      webLayoutParsed: Boolean(tryParseJsonString(cfg.webLayout)),
       totalFieldsDetected: fields.length,
       sampleFields: fields
         .sort((a, b) => a.label.localeCompare(b.label))
-        .slice(0, 120),
-      tip: "Busca aquí 'cliente', 'rut', 'altura', etc. Si aparecen con label real, el mapeo ya funcionará.",
+        .slice(0, 200),
+      tip: "Ahora label debe ser texto (modifiedLabel). Busca Cliente/Rut/Altura requerida/Ancho disponible en acceso/etc.",
     });
   }
 
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
 
   try {
     const b = req.body || {};
@@ -300,6 +296,7 @@ export default async function handler(req, res) {
 
     const { firstName, lastName } = splitName(contactName);
 
+    // (igual mantenemos description como respaldo)
     const desc = [
       "Solicitud de cotización desde Recomendador Spider (VertiTek)",
       "",
@@ -362,7 +359,6 @@ export default async function handler(req, res) {
       mappedCustomFields: customAttributes.length,
       missingCustomFieldLabels: missing,
       matched,
-      totalFieldsDetected: fields.length,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || "Unknown error" });
