@@ -1,26 +1,27 @@
 // api/apptivo-lead.js
-// Apptivo Leads: mapeo real de campos usando referenceFields (más confiable que webLayout)
+// Apptivo Leads - mapeo custom fields desde webLayout (label puede venir como OBJETO)
 // Debug: GET /api/apptivo-lead?debug=1
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedConfig = null;
 let cachedAt = 0;
 
+// Campos que quieres llenar (tolerante)
 const TARGET_FIELDS = [
-  { wanted: ["cliente"], key: "companyName" },
-  { wanted: ["rut"], key: "companyRut" },
+  { wanted: ["cliente", "nombre empresa", "empresa", "razon social"], key: "companyName" },
+  { wanted: ["rut", "rut empresa", "r.u.t", "r u t"], key: "companyRut" },
 
-  { wanted: ["altura requerida"], key: "heightM" },
-  { wanted: ["alcance requerido"], key: "reachM" },
-  { wanted: ["inclinacion terreno", "inclinación terreno", "pendiente"], key: "slopeDeg" },
+  { wanted: ["altura requerida", "altura", "altura requerida (m)", "altura (m)"], key: "heightM" },
+  { wanted: ["alcance requerido", "alcance", "alcance requerido (m)", "alcance (m)"], key: "reachM" },
+  { wanted: ["inclinacion terreno", "inclinación terreno", "inclinacion", "pendiente"], key: "slopeDeg" },
 
-  { wanted: ["tipo de acceso"], key: "accessType" },
-  { wanted: ["ancho acceso"], key: "accessWidthCm" },
-  { wanted: ["altura acceso"], key: "accessHeightCm" },
+  { wanted: ["tipo de acceso", "acceso", "tipo acceso"], key: "accessType" },
+  { wanted: ["ancho acceso", "ancho de acceso", "ancho"], key: "accessWidthCm" },
+  { wanted: ["altura acceso", "alto acceso", "altura de acceso", "alto de acceso"], key: "accessHeightCm" },
 
-  { wanted: ["peso max ascensor", "peso máximo ascensor"], key: "elevatorMaxKg" },
-  { wanted: ["cabina ascensor ancho"], key: "elevatorCabinWidthCm" },
-  { wanted: ["cabina ascensor fondo"], key: "elevatorCabinDepthCm" },
+  { wanted: ["peso max ascensor", "peso máximo ascensor", "peso maximo ascensor", "capacidad ascensor"], key: "elevatorMaxKg" },
+  { wanted: ["cabina ascensor ancho", "ancho cabina ascensor", "ancho cabina"], key: "elevatorCabinWidthCm" },
+  { wanted: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina"], key: "elevatorCabinDepthCm" },
 ];
 
 function normalizeLabel(s) {
@@ -33,6 +34,14 @@ function normalizeLabel(s) {
     .replace(/\b(m|cm|kg|mts|mt)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function tryParseJsonString(s) {
+  if (typeof s !== "string") return null;
+  const t = s.trim();
+  if (!t) return null;
+  if (!(t.startsWith("{") || t.startsWith("["))) return null;
+  try { return JSON.parse(t); } catch { return null; }
 }
 
 function isValidEmail(email) {
@@ -54,16 +63,125 @@ function splitName(full) {
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
+// ✅ Convierte label que puede venir como objeto a texto usable
+function labelToText(label) {
+  if (!label) return "";
+  if (typeof label === "string") return label;
+
+  // Si es un objeto, intentamos claves típicas
+  if (typeof label === "object") {
+    const candidates = [
+      label.text,
+      label.label,
+      label.name,
+      label.title,
+      label.value,
+      label.displayName,
+      label.placeholder,
+    ].filter(Boolean);
+
+    if (candidates.length) return String(candidates[0]);
+
+    // último recurso: stringify (pero sin dejar "[object Object]")
+    try {
+      const s = JSON.stringify(label);
+      // si el JSON contiene algo tipo {"text":"Cliente"} lo convertimos a texto legible
+      if (s && s !== "{}") return s;
+    } catch {}
+  }
+
+  return "";
+}
+
+// ✅ Determina si un id parece “campo” y no sección/placeholder
+function looksLikeFieldId(id) {
+  const s = String(id || "");
+  // IDs de controles típicos del layout
+  return (
+    s.startsWith("input_") ||
+    s.startsWith("number_") ||
+    s.startsWith("select_") ||
+    s.startsWith("textarea_") ||
+    s.startsWith("check_") ||
+    s.endsWith("_attr") // campos estándar tipo email_attr, company_attr, etc.
+  );
+}
+
 function mkCustomAttr({ id, type }, value) {
   const v = value == null ? "" : String(value);
   return {
-    customAttributeId: id,
-    customAttributeType: type || "text",
+    customAttributeId: String(id),
+    customAttributeType: String(type || "text"),
     customAttributeValue: v,
-    customAttributeTagName: id,
-    customAttributeName: id,
-    [id]: v,
+    customAttributeTagName: String(id),
+    customAttributeName: String(id),
+    [String(id)]: v,
   };
+}
+
+// ✅ Extrae “campos” del webLayout (string JSON)
+function extractFieldsFromWebLayout(cfg) {
+  const parsed = tryParseJsonString(cfg?.webLayout);
+  if (!parsed) return [];
+
+  const out = [];
+  const seen = new Set();
+  const stack = [parsed];
+
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur) continue;
+
+    if (Array.isArray(cur)) {
+      for (const it of cur) stack.push(it);
+      continue;
+    }
+    if (typeof cur !== "object") continue;
+
+    // Id del control / atributo
+    const id = cur.attributeId || cur.customAttributeId || cur.id || null;
+
+    // Type (muchas veces viene como "Custom", "Standard", "radio", etc.)
+    const type = cur.attributeType || cur.customAttributeType || cur.type || cur.dataType || null;
+
+    // Label puede venir como string o como objeto
+    const rawLabel =
+      cur.label ||
+      cur.displayName ||
+      cur.attributeNameMeaning ||
+      cur.attributeName ||
+      cur.customAttributeName ||
+      cur.name ||
+      cur.title ||
+      null;
+
+    const label = labelToText(rawLabel);
+
+    // Guardamos solo cosas que parezcan campos reales (no secciones)
+    if (id && looksLikeFieldId(id) && label && label !== "[object Object]") {
+      const norm = normalizeLabel(label);
+      const key = `${id}::${norm}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({
+          id: String(id),
+          type: String(type || "text"),
+          label,
+          norm,
+        });
+      }
+    }
+
+    for (const k of Object.keys(cur)) {
+      const v = cur[k];
+      // si adentro hay strings JSON, los parseamos
+      const p = tryParseJsonString(v);
+      if (p) stack.push(p);
+      else stack.push(v);
+    }
+  }
+
+  return out;
 }
 
 async function getLeadsConfig({ apiKey, accessKey }) {
@@ -87,70 +205,6 @@ async function getLeadsConfig({ apiKey, accessKey }) {
   return data;
 }
 
-// ✅ Extrae campos reales desde referenceFields
-function extractFromReferenceFields(cfg) {
-  const rf = cfg?.referenceFields;
-  const found = [];
-
-  // referenceFields puede venir como array, objeto, o incluir "fields"
-  const stack = [rf];
-  const seen = new Set();
-
-  while (stack.length) {
-    const cur = stack.pop();
-    if (!cur) continue;
-
-    if (Array.isArray(cur)) {
-      for (const it of cur) stack.push(it);
-      continue;
-    }
-    if (typeof cur !== "object") continue;
-
-    // Heurísticas: muchos configs usan fieldId/attributeId + displayName/label/name + fieldType/dataType
-    const id =
-      cur.fieldId ||
-      cur.attributeId ||
-      cur.customAttributeId ||
-      cur.id ||
-      null;
-
-    const label =
-      cur.displayName ||
-      cur.label ||
-      cur.name ||
-      cur.attributeNameMeaning ||
-      cur.attributeName ||
-      cur.customAttributeName ||
-      null;
-
-    const type =
-      cur.fieldType ||
-      cur.dataType ||
-      cur.attributeType ||
-      cur.customAttributeType ||
-      cur.type ||
-      null;
-
-    if (id && label) {
-      const key = `${id}::${label}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        found.push({
-          id: String(id),
-          label: String(label),
-          norm: normalizeLabel(label),
-          type: String(type || "text"),
-          rawType: type,
-        });
-      }
-    }
-
-    for (const k of Object.keys(cur)) stack.push(cur[k]);
-  }
-
-  return found;
-}
-
 function buildIndex(fields) {
   const byNorm = new Map();
   for (const f of fields) {
@@ -171,21 +225,20 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
   }
 
-  // DEBUG: muestra lo que referenceFields realmente contiene
+  // ✅ DEBUG: muestra campos que realmente detectamos con labels correctos
   if (req.method === "GET" && String(req.query?.debug || "") === "1") {
     const cfg = await getLeadsConfig({ apiKey, accessKey });
-    const extracted = extractFromReferenceFields(cfg);
+    const fields = extractFieldsFromWebLayout(cfg);
 
     return res.status(200).json({
       ok: true,
-      hasReferenceFields: cfg.referenceFields != null,
-      referenceFieldsType: typeof cfg.referenceFields,
-      extractedCount: extracted.length,
-      sample: extracted
+      webLayoutType: typeof cfg.webLayout,
+      webLayoutParsed: Boolean(tryParseJsonString(cfg.webLayout)),
+      totalFieldsDetected: fields.length,
+      sampleFields: fields
         .sort((a, b) => a.label.localeCompare(b.label))
-        .slice(0, 200)
-        .map(x => ({ label: x.label, norm: x.norm, id: x.id, type: x.type })),
-      note: "Busca aquí Cliente/Rut/Altura/etc. Este sample SÍ debería mostrar nombres reales.",
+        .slice(0, 120),
+      tip: "Busca aquí 'cliente', 'rut', 'altura', etc. Si aparecen con label real, el mapeo ya funcionará.",
     });
   }
 
@@ -208,7 +261,7 @@ export default async function handler(req, res) {
     }
 
     const cfg = await getLeadsConfig({ apiKey, accessKey });
-    const fields = extractFromReferenceFields(cfg);
+    const fields = extractFieldsFromWebLayout(cfg);
     const byNorm = buildIndex(fields);
 
     const missing = [];
@@ -309,7 +362,7 @@ export default async function handler(req, res) {
       mappedCustomFields: customAttributes.length,
       missingCustomFieldLabels: missing,
       matched,
-      referenceFieldsExtracted: fields.length,
+      totalFieldsDetected: fields.length,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || "Unknown error" });
