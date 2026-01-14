@@ -19,7 +19,7 @@ let cachedAt = 0;
 // - etc.
 const TARGET_FIELDS = [
   // Identificación
-  { wanted: ["cliente"], key: "companyName" }, // customer_attr
+  { wanted: ["nombre empresa", "cliente"], key: "companyName" },
   { wanted: ["rut"], key: "companyRut" }, // company_attr
 
   // Datos trabajo
