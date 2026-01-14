@@ -154,18 +154,23 @@ export default async function handler(req, res) {
 
   // ✅ DEBUG: muestra los labels reales disponibles en tu Apptivo
   if (req.method === "GET" && String(req.query?.debug || "") === "1") {
-    const cfg = await getLeadsConfig({ apiKey, accessKey });
-    const attrs = extractAttributes(cfg)
-      .sort((a, b) => a.label.localeCompare(b.label))
-      .slice(0, 250); // para no devolver infinito
+  const cfg = await getLeadsConfig({ apiKey, accessKey });
 
-    return res.status(200).json({
-      ok: true,
-      totalExtracted: extractAttributes(cfg).length,
-      sample: attrs.map(a => ({ label: a.label, norm: a.norm, id: a.id, type: a.type })),
-      note: "Busca aquí los nombres EXACTOS (label) que usa Apptivo para tus custom fields.",
-    });
-  }
+  // muestra estructura sin volcar todo
+  const topKeys = cfg && typeof cfg === "object" ? Object.keys(cfg) : [];
+  const raw = JSON.stringify(cfg);
+
+  const attrs = extractAttributes(cfg);
+
+  return res.status(200).json({
+    ok: true,
+    topKeys,
+    rawSample: raw.slice(0, 5000), // muestra solo el inicio
+    totalExtracted: attrs.length,
+    sample: attrs.slice(0, 40).map(a => ({ label: a.label, norm: a.norm, id: a.id, type: a.type })),
+    note: "Comparte topKeys + rawSample conmigo para adaptar el extractor a tu estructura real.",
+  });
+}
 
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
