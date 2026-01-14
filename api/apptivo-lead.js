@@ -1,26 +1,30 @@
 // api/apptivo-lead.js
-// - Crea Lead en Apptivo
-// - Mapea custom fields automáticamente usando getConfigData
-// - Matching tolerante (sin tildes, sin unidades, etc.)
-// - Modo DEBUG: GET /api/apptivo-lead?debug=1  (muestra labels disponibles)
+// Recomendador VertiTek -> Apptivo Leads
+// - POST: crea lead y rellena custom fields (customAttributes) automáticamente
+// - GET ?debug=1: muestra campos detectados (labels + ids) para verificar mapeo
+//
+// Env vars (Vercel):
+// - APPTIVO_API_KEY
+// - APPTIVO_ACCESS_KEY
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedConfig = null;
 let cachedAt = 0;
 
+// Mapeo "lo que queremos llenar" -> cómo puede llamarse en Apptivo (variantes)
 const TARGET_FIELDS = [
   { wanted: ["cliente", "nombre empresa", "empresa", "razon social"], key: "companyName" },
-  { wanted: ["rut", "rut empresa", "r.u.t"], key: "companyRut" },
+  { wanted: ["rut", "rut empresa", "r.u.t", "r u t"], key: "companyRut" },
 
-  { wanted: ["altura requerida", "altura", "altura requerida m", "altura (m)"], key: "heightM" },
-  { wanted: ["alcance requerido", "alcance", "alcance requerido m", "alcance (m)"], key: "reachM" },
-  { wanted: ["inclinacion terreno", "inclinacion", "pendiente", "pendiente terreno"], key: "slopeDeg" },
+  { wanted: ["altura requerida", "altura", "altura requerida m", "altura (m)", "altura requerida (m)"], key: "heightM" },
+  { wanted: ["alcance requerido", "alcance", "alcance requerido m", "alcance (m)", "alcance requerido (m)"], key: "reachM" },
+  { wanted: ["inclinacion terreno", "inclinacion", "pendiente", "pendiente terreno", "inclinacion del terreno"], key: "slopeDeg" },
 
   { wanted: ["tipo de acceso", "acceso", "tipo acceso"], key: "accessType" },
   { wanted: ["ancho acceso", "ancho de acceso", "ancho"], key: "accessWidthCm" },
   { wanted: ["altura acceso", "alto acceso", "altura de acceso", "alto de acceso"], key: "accessHeightCm" },
 
-  { wanted: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor", "max kg ascensor"], key: "elevatorMaxKg" },
+  { wanted: ["peso max ascensor", "peso maximo ascensor", "capacidad ascensor", "max kg ascensor", "peso máximo ascensor"], key: "elevatorMaxKg" },
   { wanted: ["cabina ascensor ancho", "ancho cabina ascensor", "ancho cabina"], key: "elevatorCabinWidthCm" },
   { wanted: ["cabina ascensor fondo", "fondo cabina ascensor", "profundidad cabina", "cabina profundidad"], key: "elevatorCabinDepthCm" },
 ];
@@ -29,12 +33,20 @@ function normalizeLabel(s) {
   return String(s || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")        // quita tildes
-    .replace(/\(.*?\)/g, " ")              // quita (m), (cm), etc.
-    .replace(/[^a-z0-9]+/g, " ")           // deja solo letras/números
+    .replace(/[\u0300-\u036f]/g, "")        // tildes fuera
+    .replace(/\(.*?\)/g, " ")              // quita paréntesis (m), (cm), etc
+    .replace(/[^a-z0-9]+/g, " ")           // deja letras/numeros
     .replace(/\b(m|cm|kg|mts|mt)\b/g, " ")  // quita unidades sueltas
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function tryParseJsonString(s) {
+  if (typeof s !== "string") return null;
+  const t = s.trim();
+  if (!t) return null;
+  if (!(t.startsWith("{") || t.startsWith("["))) return null;
+  try { return JSON.parse(t); } catch { return null; }
 }
 
 function isValidEmail(email) {
@@ -68,7 +80,7 @@ function mkCustomAttr({ id, type }, value) {
   };
 }
 
-// Recorre getConfigData y extrae todos los atributos “probables”
+// Extrae posibles atributos desde cfg/webLayout aunque venga como JSON string
 function extractAttributes(cfg) {
   const out = [];
   const seen = new Set();
@@ -78,6 +90,13 @@ function extractAttributes(cfg) {
     const cur = stack.pop();
     if (!cur) continue;
 
+    // Si es string y parece JSON (ej: webLayout), lo parseamos y seguimos
+    const parsed = tryParseJsonString(cur);
+    if (parsed) {
+      stack.push(parsed);
+      continue;
+    }
+
     if (Array.isArray(cur)) {
       for (const it of cur) stack.push(it);
       continue;
@@ -85,7 +104,7 @@ function extractAttributes(cfg) {
     if (typeof cur !== "object") continue;
 
     const id = cur.attributeId || cur.customAttributeId || cur.id || null;
-    const type = cur.attributeType || cur.customAttributeType || cur.type || null;
+    const type = cur.attributeType || cur.customAttributeType || cur.type || cur.dataType || null;
 
     const label =
       cur.label ||
@@ -127,7 +146,6 @@ async function getLeadsConfig({ apiKey, accessKey }) {
 
   const resp = await fetch(url.toString(), { method: "GET" });
   const text = await resp.text();
-
   if (!resp.ok) throw new Error(`getConfigData error (${resp.status}): ${text}`);
 
   let data;
@@ -152,25 +170,25 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "Missing APPTIVO_API_KEY or APPTIVO_ACCESS_KEY" });
   }
 
-  // ✅ DEBUG: muestra los labels reales disponibles en tu Apptivo
+  // ✅ DEBUG: muestra campos detectados, incluyendo los que estén en webLayout (string JSON)
   if (req.method === "GET" && String(req.query?.debug || "") === "1") {
-  const cfg = await getLeadsConfig({ apiKey, accessKey });
+    const cfg = await getLeadsConfig({ apiKey, accessKey });
+    const webLayoutParsed = tryParseJsonString(cfg.webLayout);
+    const attrs = extractAttributes(webLayoutParsed || cfg);
 
-  // muestra estructura sin volcar todo
-  const topKeys = cfg && typeof cfg === "object" ? Object.keys(cfg) : [];
-  const raw = JSON.stringify(cfg);
-
-  const attrs = extractAttributes(cfg);
-
-  return res.status(200).json({
-    ok: true,
-    topKeys,
-    rawSample: raw.slice(0, 5000), // muestra solo el inicio
-    totalExtracted: attrs.length,
-    sample: attrs.slice(0, 40).map(a => ({ label: a.label, norm: a.norm, id: a.id, type: a.type })),
-    note: "Comparte topKeys + rawSample conmigo para adaptar el extractor a tu estructura real.",
-  });
-}
+    return res.status(200).json({
+      ok: true,
+      webLayoutType: typeof cfg.webLayout,
+      webLayoutParsed: Boolean(webLayoutParsed),
+      totalExtracted: attrs.length,
+      // mostramos muestra ordenada para que puedas buscar "Cliente", "Rut", etc.
+      sample: attrs
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .slice(0, 120)
+        .map(a => ({ label: a.label, norm: a.norm, id: a.id, type: a.type })),
+      note: "Usa Ctrl+F en el JSON del navegador para buscar Cliente/Rut/Altura. Si totalExtracted=0, avísame.",
+    });
+  }
 
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -193,25 +211,31 @@ export default async function handler(req, res) {
     }
 
     const cfg = await getLeadsConfig({ apiKey, accessKey });
-    const attrs = extractAttributes(cfg);
+    const webLayoutParsed = tryParseJsonString(cfg.webLayout);
+    const attrs = extractAttributes(webLayoutParsed || cfg);
 
-    // Construye índice por label normalizado
+    // índice por label normalizado
     const byNorm = new Map();
     for (const a of attrs) {
       if (!byNorm.has(a.norm)) byNorm.set(a.norm, a);
     }
 
     const missing = [];
-    const mapped = [];
+    const matched = [];
     const customAttributes = [];
 
     for (const f of TARGET_FIELDS) {
       const wantedNorms = f.wanted.map(normalizeLabel);
 
-      // Busca primer match
       let meta = null;
-      for (const w of wantedNorms) {
-        if (byNorm.has(w)) { meta = byNorm.get(w); break; }
+      let usedWanted = f.wanted[0];
+      for (let i = 0; i < wantedNorms.length; i++) {
+        const w = wantedNorms[i];
+        if (byNorm.has(w)) {
+          meta = byNorm.get(w);
+          usedWanted = f.wanted[i];
+          break;
+        }
       }
 
       const val =
@@ -223,7 +247,7 @@ export default async function handler(req, res) {
         const v = val == null ? "" : String(val);
         if (v !== "") {
           customAttributes.push(mkCustomAttr(meta, v));
-          mapped.push({ field: f.wanted[0], matchedLabel: meta.label });
+          matched.push({ wanted: usedWanted, matchedLabel: meta.label, id: meta.id, type: meta.type });
         }
       } else {
         missing.push(f.wanted[0]);
@@ -294,7 +318,7 @@ export default async function handler(req, res) {
       apptivo: data,
       mappedCustomFields: customAttributes.length,
       missingCustomFieldLabels: missing,
-      matched: mapped, // para ver qué label real se usó
+      matched,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || "Unknown error" });
