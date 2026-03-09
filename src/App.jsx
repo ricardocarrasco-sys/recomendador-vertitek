@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+from pathlib import Path
+
+app_code = r'''import React, { useMemo, useState } from "react";
 
 /**
  * Recomendador Spider – VertiTek (v3.2)
@@ -224,8 +226,7 @@ const fmt = (n, suf = "") => {
   return `${x}${suf}`;
 };
 
-const isValidEmail = (email) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 
 // Convierte inputs a número de forma segura (acepta coma decimal).
 const toNum = (v) => {
@@ -309,7 +310,7 @@ function hardFails(model, p) {
     if (p.outreachM > allowed + 0.05) fails.push("alcance");
   }
 
-  // Acceso (ancho) - solo si el cliente informó el ancho.
+  // Acceso (ancho)
   if (p.accessWidthCm != null) {
     if (p.accessWidthCm < model.minAccessWidthCm - 1e-9) fails.push("ancho");
   }
@@ -487,7 +488,6 @@ function buildWhatsappText({ company, contact, job, quote, rec, legalText }) {
     quote?.rentalDays != null ? `- Días de arriendo: ${quote.rentalDays}` : null,
     quote?.deliveryWindowLabel ? `- Horario de entrega: ${quote.deliveryWindowLabel}` : null,
     quote?.workSite ? `- Lugar: ${quote.workSite}` : null,
-
     "\nTRABAJO",
     `- Altura requerida: ${job.heightM} m`,
     job.outreachM != null ? `- Alcance requerido: ${job.outreachM} m` : null,
@@ -504,7 +504,6 @@ function buildWhatsappText({ company, contact, job, quote, rec, legalText }) {
     job.emissionsRestriction === "yes" ? "- Restricción de emisiones/ruido: Sí" : "- Restricción de emisiones/ruido: No",
     job.needsNegativeAccess === "yes" ? "- Requiere acceso negativo: Sí" : "- Requiere acceso negativo: No",
     job.notes ? `- Notas: ${job.notes}` : null,
-
     "\nEQUIPO RECOMENDADO",
     `- Modelo: ${rec.name}`,
     `- Altura máx: ${rec.maxWorkingHeightM} m`,
@@ -559,7 +558,6 @@ export default function App() {
     return degFromPercent(String(slopeValue).replace(",", "."));
   }, [slopeUnit, slopeValue]);
 
-  // Detecta error de formato (ej: "12,," o "abc") si el usuario escribió algo no numérico
   const outreachInvalid = outreachM !== "" && toNum(outreachM) === null;
 
   const jobParams = useMemo(
@@ -609,7 +607,7 @@ export default function App() {
     [rentalDays, workSite, deliveryWindow]
   );
 
-  // Recomendación SOLO con elegibles. Si no hay elegibles, retorna lista vacía (no se recomienda nada).
+  // Recomendación SOLO con elegibles. Si no hay elegibles, lista vacía.
   const recommendations = useMemo(() => {
     const eligible = PSO_CATALOG.filter((m) => isEligible(m, jobParams));
     if (eligible.length === 0) return [];
@@ -618,7 +616,6 @@ export default function App() {
   }, [jobParams]);
 
   const top = recommendations[0] || null;
-
   const isElevator = accessType === "ascensor";
 
   const step1Ok =
@@ -636,7 +633,6 @@ export default function App() {
         jobParams.elevatorCabDepthCm != null &&
         jobParams.elevatorCabDepthCm > 0));
 
-  // Paso 2 solo OK si existe un top (es decir, existe al menos un equipo que cumple hard constraints)
   const step2Ok = Boolean(top);
 
   const step3Ok =
@@ -719,4 +715,467 @@ export default function App() {
 
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.ok) throw new Error(data?.error || "Error enviando a Apptivo");
-      setSubmitStatus({ kind: "ok
+      setSubmitStatus({ kind: "ok", msg: "Solicitud enviada ✅. Te contactaremos a la brevedad." });
+    } catch (e) {
+      setSubmitStatus({ kind: "err", msg: `No se pudo enviar: ${e.message}` });
+    }
+  }
+
+  const stepTitle = (s) => ({ 1: "Datos del trabajo", 2: "Recomendación", 3: "Datos para cotización", 4: "Enviar solicitud" }[s] || "");
+
+  return (
+    <div className="container">
+      <div className="row">
+        <div>
+          <div className="h1">Recomendador Spider – Grupo Vertikal</div>
+          <div className="hint">Build: {BUILD_TAG}</div>
+          <div className="sub">Recomendación técnica + cotización formal. (Fotos se solicitan luego si aplica.)</div>
+        </div>
+        <span className="badge">Paso {step} de 4</span>
+      </div>
+
+      <div className="grid">
+        <div className="card">
+          <div className="row" style={{ alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{stepTitle(step)}</div>
+              <div className="small">
+                {step === 1 ? "Completa medidas y condiciones. Si es ascensor, se requieren datos PRO." : null}
+                {step === 3 ? "Datos obligatorios para cotización formal (incluye arriendo y entrega)." : null}
+              </div>
+            </div>
+            {step === 2 && top ? <span className="badge primary">Top: {top.name}</span> : null}
+          </div>
+
+          {step === 1 && (
+            <>
+              <hr />
+              <div className="cols2">
+                <div>
+                  <label>Altura requerida (m) ⭐</label>
+                  <input type="number" min="1" value={heightM} onChange={(e) => setHeightM(e.target.value)} />
+                </div>
+                <div>
+                  <label>Alcance horizontal requerido (m) (opcional)</label>
+                  <input type="text" value={outreachM} onChange={(e) => setOutreachM(e.target.value)} placeholder="Ej: 10 o 10.5" />
+                  {outreachInvalid ? (
+                    <div className="help" style={{ color: "#b00020" }}>
+                      Alcance inválido. Usa número con punto o coma (ej: 12,5).
+                    </div>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label>Tipo de acceso</label>
+                  <select value={accessType} onChange={(e) => setAccessType(e.target.value)}>
+                    <option value="puerta">Puerta</option>
+                    <option value="pasillo">Pasillo</option>
+                    <option value="porton">Portón</option>
+                    <option value="ascensor">Ascensor</option>
+                  </select>
+                  <div className="help">Selecciona el punto más restrictivo por donde debe pasar el equipo.</div>
+                </div>
+
+                <div>
+                  <label>Ancho disponible en el acceso (cm) ⭐</label>
+                  <input type="text" value={accessWidthCm} onChange={(e) => setAccessWidthCm(e.target.value)} placeholder="Ej: 95" />
+                </div>
+
+                <div>
+                  <label>Altura disponible del acceso (cm){isElevator ? " ⭐" : " (opcional)"}</label>
+                  <input type="text" value={accessHeightCm} onChange={(e) => setAccessHeightCm(e.target.value)} placeholder="Ej: 200" />
+                </div>
+
+                <div>
+                  <label>Inclinación del terreno</label>
+                  <div className="cols2" style={{ gridTemplateColumns: "2fr 1fr" }}>
+                    <input type="text" value={slopeValue} onChange={(e) => setSlopeValue(e.target.value)} placeholder={slopeUnit === "deg" ? "Ej: 8" : "Ej: 12"} />
+                    <select value={slopeUnit} onChange={(e) => setSlopeUnit(e.target.value)}>
+                      <option value="deg">Grados (°)</option>
+                      <option value="pct">Porcentaje (%)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {isElevator && (
+                  <>
+                    <div>
+                      <label>Capacidad máxima del ascensor (kg) ⭐</label>
+                      <input type="text" value={elevatorMaxKg} onChange={(e) => setElevatorMaxKg(e.target.value)} placeholder="Ej: 1000" />
+                    </div>
+                    <div>
+                      <label>Cabina ascensor – ancho interno (cm) ⭐</label>
+                      <input type="text" value={elevatorCabWidthCm} onChange={(e) => setElevatorCabWidthCm(e.target.value)} placeholder="Ej: 120" />
+                    </div>
+                    <div>
+                      <label>Cabina ascensor – fondo/profundidad (cm) ⭐</label>
+                      <input type="text" value={elevatorCabDepthCm} onChange={(e) => setElevatorCabDepthCm(e.target.value)} placeholder="Ej: 140" />
+                    </div>
+                    <div className="notice">
+                      <strong>Nota:</strong> En ascensores, el <strong>fondo</strong> suele ser el factor crítico.
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label>Interior / Exterior</label>
+                  <select value={indoor} onChange={(e) => setIndoor(e.target.value)}>
+                    <option value="no">Exterior</option>
+                    <option value="yes">Interior</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Tipo de terreno</label>
+                  <select value={terrain} onChange={(e) => setTerrain(e.target.value)}>
+                    <option value="Plano">Plano</option>
+                    <option value="Mixto">Mixto</option>
+                    <option value="Irregular">Irregular</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Restricción de ruido/emisiones</label>
+                  <select value={emissionsRestriction} onChange={(e) => setEmissionsRestriction(e.target.value)}>
+                    <option value="no">No</option>
+                    <option value="yes">Sí</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>¿Requiere acceso negativo?</label>
+                  <select value={needsNegativeAccess} onChange={(e) => setNeedsNegativeAccess(e.target.value)}>
+                    <option value="no">No</option>
+                    <option value="yes">Sí</option>
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label>Tipo de trabajo</label>
+                  <select value={jobType} onChange={(e) => setJobType(e.target.value)}>
+                    <option value="Mantención">Mantención / limpieza</option>
+                    <option value="Instalación">Instalación</option>
+                    <option value="Construcción">Construcción / montaje</option>
+                    <option value="Inspección">Inspección</option>
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label>Notas</label>
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Cables, desnivel, piso delicado, puerta exacta..." />
+                </div>
+              </div>
+
+              {!step1Ok && (
+                <div className="notice err" style={{ marginTop: 12 }}>
+                  {isElevator ? "Falta completar: ancho + altura + peso máx + cabina (ancho y fondo)." : "Falta completar: altura y ancho de acceso."}
+                </div>
+              )}
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <hr />
+              {!step1Ok ? (
+                <div className="notice">Completa los datos del trabajo para obtener una recomendación.</div>
+              ) : !top ? (
+                <div className="notice err">
+                  <strong>No hay equipo compatible</strong> con las medidas ingresadas (altura/alcance/acceso). Ajusta los valores o contáctanos para evaluación técnica.
+                </div>
+              ) : (
+                <>
+                  <div className="notice">
+                    <div className="row">
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{top.name}</div>
+                        <div className="small">Puntaje: {Math.round(top.score)}</div>
+                      </div>
+                      <span className="badge primary">Mejor opción</span>
+                    </div>
+
+                    <div className="cols2" style={{ marginTop: 10 }}>
+                      <div className="kpi">
+                        <div className="small">Altura máx</div>
+                        <div style={{ fontWeight: 800 }}>{fmt(top.maxWorkingHeightM, " m")}</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="small">Alcance máx a {Number(jobParams.heightM).toFixed(0)}m</div>
+                        <div style={{ fontWeight: 800 }}>{reachAtHeight(top, jobParams.heightM).toFixed(1)} m</div>
+                        {top.outreachCapacityKg ? <div className="small">(con {top.outreachCapacityKg} kg)</div> : null}
+                      </div>
+                      <div className="kpi">
+                        <div className="small">Acceso mín</div>
+                        <div style={{ fontWeight: 800 }}>{fmt(top.minAccessWidthCm, " cm")}</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="small">Peso</div>
+                        <div style={{ fontWeight: 800 }}>{fmt(top.weightKg, " kg")}</div>
+                      </div>
+                    </div>
+
+                    <div className="small" style={{ marginTop: 10 }}>
+                      {reachLine(top, jobParams.heightM)}
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontWeight: 800 }}>Por qué</div>
+                      <ul className="ul">{top.reasons.slice(0, 6).map((r, i) => <li key={i}>{r}</li>)}</ul>
+                    </div>
+
+                    {top.warnings.length ? (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontWeight: 800 }}>Ojo</div>
+                        <ul className="ul">{top.warnings.slice(0, 6).map((w, i) => <li key={i}>{w}</li>)}</ul>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {recommendations.length > 1 && (
+                    <div className="notice" style={{ marginTop: 12 }}>
+                      <div style={{ fontWeight: 800 }}>Alternativas</div>
+                      <ul className="ul">
+                        {recommendations.slice(1).map((m) => (
+                          <li key={m.id}>
+                            {m.name} — puntaje {Math.round(m.score)} (Acceso mín {m.minAccessWidthCm}cm)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <hr />
+              <div className="cols2">
+                <div style={{ gridColumn: "1 / -1" }} className="notice">
+                  <strong>Estos datos son obligatorios</strong> para emitir una cotización formal (incluye días, lugar y horario de entrega).
+                </div>
+
+                <div>
+                  <label>Nombre empresa ⭐</label>
+                  <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+                </div>
+
+                <div>
+                  <label>RUT empresa ⭐</label>
+                  <input value={formatRut(companyRut)} onChange={(e) => setCompanyRut(e.target.value)} placeholder="76.123.456-7" />
+                  {companyRut && !validateRut(companyRut) ? (
+                    <div className="help" style={{ color: "#b00020" }}>
+                      RUT inválido.
+                    </div>
+                  ) : (
+                    <div className="help">Formato sugerido: 12.345.678-9</div>
+                  )}
+                </div>
+
+                <div>
+                  <label>Nombre contacto ⭐</label>
+                  <input value={contactName} onChange={(e) => setContactName(e.target.value)} />
+                </div>
+
+                <div>
+                  <label>Teléfono contacto ⭐</label>
+                  <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+56 9 1234 5678" />
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label>Correo electrónico contacto ⭐</label>
+                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="correo@empresa.cl" />
+                  {contactEmail && !isValidEmail(contactEmail) ? (
+                    <div className="help" style={{ color: "#b00020" }}>
+                      Correo inválido.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }} className="notice">
+                  <strong>Datos del arriendo</strong>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    Indícanos días, lugar y horario de entrega para preparar la cotización.
+                  </div>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    Tipo de trabajo indicado: <strong>{jobType}</strong>. (Si debes cambiarlo, vuelve al Paso 1.)
+                  </div>
+                </div>
+
+                <div>
+                  <label>Días de arriendo ⭐</label>
+                  <input type="text" value={rentalDays} onChange={(e) => setRentalDays(e.target.value)} placeholder="Ej: 3" />
+                </div>
+
+                <div>
+                  <label>Horario de entrega ⭐</label>
+                  <select value={deliveryWindow} onChange={(e) => setDeliveryWindow(e.target.value)}>
+                    <option value="diurno">Diurno (9 a 17 hrs)</option>
+                    <option value="nocturno">Nocturno (17 a 9 hrs)</option>
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label>Lugar donde necesita el equipo ⭐</label>
+                  <textarea value={workSite} onChange={(e) => setWorkSite(e.target.value)} placeholder="Dirección, comuna, ciudad + indicaciones de acceso" />
+                  <div className="help">Si es obra o planta, incluye portería / contacto en terreno si aplica.</div>
+                </div>
+              </div>
+
+              {!step3Ok ? <div className="notice err" style={{ marginTop: 12 }}>Completa empresa, RUT válido, datos de contacto y datos del arriendo.</div> : null}
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <hr />
+              <div className="notice">
+                <div className="row">
+                  <div>
+                    <div style={{ fontWeight: 800 }}>Enviar solicitud</div>
+                    <div className="small">Esto creará un Lead en Apptivo y notificará al equipo.</div>
+                  </div>
+                  {top ? <span className="badge primary">{top.name}</span> : null}
+                </div>
+
+                <div className="small" style={{ marginTop: 10, lineHeight: 1.6 }}>
+                  <div>
+                    Días de arriendo: <strong>{quoteParams.rentalDays != null ? `${quoteParams.rentalDays} día(s)` : "—"}</strong>
+                  </div>
+                  <div>
+                    Horario de entrega: <strong>{quoteParams.deliveryWindowLabel}</strong>
+                  </div>
+                  <div>
+                    Lugar: <strong>{quoteParams.workSite || "—"}</strong>
+                  </div>
+                </div>
+
+                <div className="btnbar" style={{ marginTop: 12 }}>
+                  <button className="primary" onClick={submitToApptivo} disabled={!top || submitStatus?.kind === "loading"}>
+                    Solicitar cotización
+                  </button>
+                  <button className="secondary" onClick={() => window.open(whatsappUrl, "_blank")} disabled={!top}>
+                    WhatsApp (opcional)
+                  </button>
+                </div>
+
+                {submitStatus ? (
+                  <div className={`notice ${submitStatus.kind === "err" ? "err" : ""}`} style={{ marginTop: 12 }}>
+                    {submitStatus.kind === "loading" ? "⏳ " : submitStatus.kind === "ok" ? "✅ " : "⚠️ "}
+                    {submitStatus.msg}
+                  </div>
+                ) : null}
+
+                <div className="notice" style={{ marginTop: 12 }}>
+                  <div style={{ fontWeight: 800 }}>Cláusula</div>
+                  <div className="small" style={{ marginTop: 6 }}>{legalText}</div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="btnbar">
+            <button onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1}>
+              Atrás
+            </button>
+            <div className="small">
+              {step === 1 && !step1Ok ? (isElevator ? "Ascensor: completa alto + peso + cabina." : "Completa altura y ancho.") : null}
+              {step === 3 && !step3Ok ? "Completa datos para cotización (incluye arriendo y entrega)." : null}
+            </div>
+            <button className="primary" onClick={() => setStep((s) => Math.min(4, s + 1))} disabled={!canGoNext}>
+              Siguiente
+            </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="row">
+            <div>
+              <div style={{ fontWeight: 800 }}>Estado</div>
+              <div className="small">Checklist de avance</div>
+            </div>
+            <span className="badge">Apptivo-ready</span>
+          </div>
+          <hr />
+          <div className="row">
+            <span>Datos trabajo</span>
+            <span className={`badge ${step1Ok ? "ok" : ""}`}>{step1Ok ? "OK" : "Pendiente"}</span>
+          </div>
+          <div className="row">
+            <span>Recomendación</span>
+            <span className={`badge ${step2Ok ? "ok" : ""}`}>{step2Ok ? "OK" : "Pendiente"}</span>
+          </div>
+          <div className="row">
+            <span>Datos cotización</span>
+            <span className={`badge ${step3Ok ? "ok" : ""}`}>{step3Ok ? "OK" : "Pendiente"}</span>
+          </div>
+
+          <hr />
+          <div style={{ fontWeight: 800 }}>Resumen rápido</div>
+          <div className="small" style={{ marginTop: 8, lineHeight: 1.6 }}>
+            <div>
+              Altura: <strong>{fmt(heightM, " m")}</strong>
+            </div>
+            <div>
+              Acceso: <strong>{fmt(accessWidthCm, " cm")}</strong>
+            </div>
+            <div>
+              Altura acceso: <strong>{fmt(accessHeightCm, " cm")}</strong>
+            </div>
+            <div>
+              Ascensor (kg): <strong>{fmt(elevatorMaxKg, " kg")}</strong>
+            </div>
+            <div>
+              Cabina ancho: <strong>{fmt(elevatorCabWidthCm, " cm")}</strong>
+            </div>
+            <div>
+              Cabina fondo: <strong>{fmt(elevatorCabDepthCm, " cm")}</strong>
+            </div>
+            <div>
+              Interior: <strong>{indoor === "yes" ? "Sí" : "No"}</strong>
+            </div>
+            <div>
+              Inclinación: <strong>{jobParams.slopeDeg != null ? `${jobParams.slopeDeg.toFixed(1)}°` : "—"}</strong>
+            </div>
+            <div>
+              Arriendo: <strong>{quoteParams.rentalDays != null ? `${quoteParams.rentalDays} día(s)` : "—"}</strong>
+            </div>
+            <div>
+              Entrega: <strong>{quoteParams.deliveryWindowLabel}</strong>
+            </div>
+            <div>
+              Lugar: <strong>{quoteParams.workSite ? (quoteParams.workSite.length > 48 ? quoteParams.workSite.slice(0, 48) + "…" : quoteParams.workSite) : "—"}</strong>
+            </div>
+          </div>
+
+          <hr />
+          <div style={{ fontWeight: 800 }}>Top sugerido</div>
+          {top ? (
+            <div className="small" style={{ marginTop: 8, lineHeight: 1.6 }}>
+              <div>
+                <strong>{top.name}</strong>
+              </div>
+              <div>Altura {top.maxWorkingHeightM}m</div>
+              <div>{reachLine(top, jobParams.heightM)}</div>
+              <div>
+                Acceso mín {top.minAccessWidthCm}cm · Altura plegada {Math.round(top.stowedHeightM * 100)}cm
+              </div>
+              <div>Peso {top.weightKg}kg</div>
+            </div>
+          ) : (
+            <div className="small" style={{ marginTop: 8 }}>
+              {step1Ok ? "No hay equipo compatible con las medidas ingresadas." : "Completa los datos del trabajo."}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+'''
+
+out_path = Path("/mnt/data/App.v3.2.jsx")
+out_path.write_text(app_code, encoding="utf-8")
+
+str(out_path)
