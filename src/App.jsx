@@ -625,8 +625,7 @@ export default function App() {
       if (jobParams.motorPref === "hybrid") return m.powerType === "hybrid";
 
       // 4) Batería (Litio) => eléctricos
-      if (jobParams.motorPref === "battery") return m.powerType === "electric";
-
+      if (jobParams.motorPref === "battery") return m.powerType === "electric" || m.powerType === "hybrid";
       return true;
     });
 
