@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from "react";
 
 /**
- * Recomendador Spider – VertiTek (v2)
+ * Recomendador Spider – VertiTek (v3.1)
  * - Fotos eliminadas en esta etapa (el vendedor las solicita si aplica)
  * - Envío directo a Apptivo (Leads) vía /api/apptivo-lead
  * - WhatsApp queda como respaldo opcional
  */
+
+// Etiqueta visible para verificar que Vercel está sirviendo el build correcto.
+const BUILD_TAG = "ENVELOPE_V3.1 + ARRIENDO_V1 (2026-03-09)";
 
 const PSO_CATALOG = [
   { id:"pso-11bl", name:"PSO-11BL", maxWorkingHeightM:10.8, maxPlatformHeightM:8.8, maxOutreachM:6.2, outreachCapacityKg:120,
@@ -108,8 +111,10 @@ function hardFails(model, p){
     if(p.outreachM > allowed + 0.05) fails.push('alcance');
   }
 
-  // Acceso (ancho)
-  if(p.accessWidthCm < model.minAccessWidthCm - 1e-9) fails.push('ancho');
+  // Acceso (ancho) - solo si el cliente informó el ancho.
+  if(p.accessWidthCm != null){
+    if(p.accessWidthCm < model.minAccessWidthCm - 1e-9) fails.push('ancho');
+  }
 
   // Altura de acceso (si se informó)
   if(p.accessHeightCm != null){
@@ -118,7 +123,7 @@ function hardFails(model, p){
   }
 
   // Restricciones de ascensor (si aplica)
-  if(p.accessType === 'elevator'){
+  if(p.accessType === 'ascensor'){
     const machineKg = Number(model.weightKg) || 0;
     if(p.elevatorMaxKg != null && machineKg > p.elevatorMaxKg + 1e-9) fails.push('peso');
 
@@ -305,7 +310,7 @@ export default function App(){
     heightM:Number(heightM)||0,
     outreachM: outreachM===""?null:Number(outreachM),
     accessType,
-    accessWidthCm:Number(accessWidthCm)||0,
+    accessWidthCm: accessWidthCm===""?null:Number(accessWidthCm),
     accessHeightCm: accessHeightCm===""?null:Number(accessHeightCm),
     elevatorMaxKg: elevatorMaxKg===""?null:Number(elevatorMaxKg),
     elevatorCabWidthCm: elevatorCabWidthCm===""?null:Number(elevatorCabWidthCm),
@@ -330,7 +335,7 @@ export default function App(){
 
   const isElevator = accessType==="ascensor";
 
-  const step1Ok = jobParams.heightM>0 && jobParams.accessWidthCm>0 && (!isElevator || (
+  const step1Ok = jobParams.heightM>0 && jobParams.accessWidthCm!=null && jobParams.accessWidthCm>0 && (!isElevator || (
     jobParams.accessHeightCm!=null && jobParams.accessHeightCm>0 &&
     jobParams.elevatorMaxKg!=null && jobParams.elevatorMaxKg>0 &&
     jobParams.elevatorCabWidthCm!=null && jobParams.elevatorCabWidthCm>0 &&
@@ -420,6 +425,7 @@ export default function App(){
       <div className="row">
         <div>
           <div className="h1">Recomendador Spider – Grupo Vertikal</div>
+          <div className="hint">Build: {BUILD_TAG}</div>
           <div className="sub">Recomendación técnica + cotización formal. (Fotos se solicitan luego si aplica.)</div>
         </div>
         <span className="badge">Paso {step} de 4</span>
