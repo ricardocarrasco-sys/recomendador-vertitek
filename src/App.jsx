@@ -11,27 +11,27 @@ const PSO_CATALOG = [
   { id:"pso-11bl", name:"PSO-11BL", maxWorkingHeightM:10.8, maxPlatformHeightM:8.8, maxOutreachM:6.2, outreachCapacityKg:120,
     maxCapacityKg:200, people:2, minAccessWidthCm:84, stowedWidthM:0.84, stowedLengthM:3.38, stowedHeightM:1.98, weightKg:1535,
     power:"Eléctrico (Litio + 220V)", powerType:"electric", autoLevel:true, maxWorkSlopeDeg:11, maxTravelSlopePct:28, basketRotationDesc:"2×90°",
-    unique:["Acceso negativo (canastillo bajo nivel de estabilizadores)","Compacto y liviano"] },
+    unique:["Acceso negativo (canastillo bajo nivel de estabilizadores)","Compacto y liviano"], envelope:[{h:0,r:6.2},{h:2,r:6.0},{h:4,r:5.4},{h:6,r:4.2},{h:8,r:3.0},{h:9,r:2.2},{h:10,r:1.2},{h:10.8,r:0}] },
   { id:"pso-18bl", name:"PSO-18BL", maxWorkingHeightM:17.8, maxPlatformHeightM:15.8, maxOutreachM:9.3, outreachCapacityKg:120,
     maxCapacityKg:230, people:2, minAccessWidthCm:78, stowedWidthM:0.78, stowedLengthM:4.44, stowedHeightM:1.995, weightKg:2300,
     power:"Eléctrico (Litio + 220V)", powerType:"electric", autoLevel:true, maxWorkSlopeDeg:11, maxTravelSlopePct:28, basketRotationDesc:"2×90°",
-    unique:["Acceso muy estrecho (78 cm)"] },
+    unique:["Acceso muy estrecho (78 cm)"], envelope:[{h:0,r:9.3},{h:2,r:9.1},{h:4,r:8.8},{h:6,r:8.2},{h:8,r:7.2},{h:10,r:6.2},{h:12,r:5.0},{h:14,r:3.8},{h:16,r:2.2},{h:17.8,r:0}] },
   { id:"pso-18c", name:"PSO-18C", maxWorkingHeightM:17.7, maxPlatformHeightM:15.7, maxOutreachM:11.3, outreachCapacityKg:80,
     maxCapacityKg:230, people:2, minAccessWidthCm:99, stowedWidthM:0.99, stowedLengthM:5.58, stowedHeightM:1.98, weightKg:2400,
     power:"Bi-energía (Diésel + 220V)", powerType:"diesel-220", autoLevel:true, maxWorkSlopeDeg:11, maxTravelSlopePct:28, basketRotationDesc:"No",
-    unique:["Gran alcance horizontal (11,3 m a 80 kg)"] },
+    unique:["Gran alcance horizontal (11,3 m a 80 kg)"], envelope:[{h:0,r:11.3},{h:5,r:10.8},{h:8,r:10.0},{h:10,r:9.2},{h:12,r:8.0},{h:14,r:6.5},{h:15.5,r:5.0},{h:16.5,r:3.0},{h:17.7,r:0}] },
   { id:"pso-22b", name:"PSO-22B", maxWorkingHeightM:22, maxPlatformHeightM:20, maxOutreachM:10.9, outreachCapacityKg:200,
     maxCapacityKg:250, people:2, minAccessWidthCm:94.5, stowedWidthM:0.945, stowedLengthM:5.2, stowedHeightM:1.97, weightKg:2990,
     power:"Bi-energía (Gasolina + 220V)", powerType:"gas-220", autoLevel:true, maxWorkSlopeDeg:11, maxTravelSlopePct:28, basketRotationDesc:"2×90°",
-    unique:["Múltiples configuraciones de estabilización"] },
+    unique:["Múltiples configuraciones de estabilización"], envelope:[{h:0,r:10.9},{h:5,r:10.9},{h:9,r:10.9},{h:12,r:10.0},{h:15,r:8.8},{h:18,r:7.0},{h:20,r:5.0},{h:22,r:0}] },
   { id:"pso-26b", name:"PSO-26B", maxWorkingHeightM:26, maxPlatformHeightM:24, maxOutreachM:14.5, outreachCapacityKg:null,
     maxCapacityKg:250, people:2, minAccessWidthCm:99, stowedWidthM:0.99, stowedLengthM:5.58, stowedHeightM:1.98, weightKg:3350,
     power:"Bi-energía (Diésel + 220V)", powerType:"diesel-220", autoLevel:true, maxWorkSlopeDeg:11, maxTravelSlopePct:28, basketRotationDesc:"2×90°",
-    unique:["Máxima altura y alcance"] },
+    unique:["Máxima altura y alcance"], envelope:[{h:0,r:14.5},{h:5,r:14.5},{h:10,r:14.5},{h:12,r:14.0},{h:15,r:13.0},{h:18,r:11.5},{h:20,r:10.0},{h:22,r:8.0},{h:24,r:5.5},{h:26,r:0}] },
   { id:"pso-26bh", name:"PSO-26BH", maxWorkingHeightM:26, maxPlatformHeightM:24, maxOutreachM:14.5, outreachCapacityKg:null,
     maxCapacityKg:250, people:2, minAccessWidthCm:99, stowedWidthM:0.99, stowedLengthM:5.58, stowedHeightM:1.98, weightKg:3450,
     power:"Híbrido (Diésel + Baterías Li)", powerType:"hybrid", autoLevel:true, maxWorkSlopeDeg:11, maxTravelSlopePct:28, basketRotationDesc:"2×90°",
-    unique:["Modo más limpio/ruido reducido vs diésel puro"] },
+    unique:["Modo más limpio/ruido reducido vs diésel puro"], envelope:[{h:0,r:14.5},{h:5,r:14.5},{h:10,r:14.5},{h:12,r:14.0},{h:15,r:13.0},{h:18,r:11.5},{h:20,r:10.0},{h:22,r:8.0},{h:24,r:5.5},{h:26,r:0}] },
 ];
 
 const WHATSAPP_NUMBER_E164 = "+56942600557";
@@ -79,32 +79,69 @@ const degFromPercent = (pct)=>{
   return (Math.atan(p/100)*180)/Math.PI;
 };
 
+// Working envelope: alcance máximo aproximado para una altura dada (interpolación lineal).
+// Si un modelo no tiene envelope, cae a maxOutreachM (comportamiento anterior).
+function reachAtHeight(model, heightM){
+  const env = model?.envelope;
+  if(!Array.isArray(env) || env.length < 2) return model.maxOutreachM;
+  const h = Math.max(env[0].h, Math.min(heightM, env[env.length-1].h));
+  for(let i=0;i<env.length-1;i++){
+    const a=env[i], b=env[i+1];
+    if(h>=a.h && h<=b.h){
+      const t=(h-a.h)/(b.h-a.h || 1);
+      return a.r + t*(b.r-a.r);
+    }
+  }
+  return env[env.length-1].r;
+}
+
+// Texto de ayuda para UI: alcance máximo a una altura, indicando carga según ficha.
+function reachLine(model, heightM){
+  const h = Number(heightM||0);
+  const allowed = reachAtHeight(model, h);
+  const kg = model?.outreachCapacityKg;
+  const kgTxt = kg ? ` (con ${kg} kg)` : "";
+  return `Alcance máximo a ${h.toFixed(0)} m de altura: ${allowed.toFixed(1)} m${kgTxt}`;
+}
+
 function scoreModel(model,p){
   const reasons=[], warnings=[];
   let score=0;
+  // Elegible = cumple restricciones duras (altura, alcance a esa altura, acceso físico).
+  // Otras condiciones (interior/emisiones, etc.) solo afectan score/advertencias.
+  let eligible = true;
 
   if(p.heightM<=model.maxWorkingHeightM){
     const margin=model.maxWorkingHeightM-p.heightM;
     score+=40-clamp(margin*3,0,18);
     reasons.push(`Cumple altura (${model.maxWorkingHeightM}m ≥ ${p.heightM}m).`);
-  } else { score-=200; warnings.push(`No alcanza altura (${model.maxWorkingHeightM}m < ${p.heightM}m).`); }
+  } else { score-=200; eligible=false; warnings.push(`No alcanza altura (${model.maxWorkingHeightM}m < ${p.heightM}m).`); }
 
-  if(p.outreachM===null){ score+=6; }
-  else if(p.outreachM<=model.maxOutreachM){
-    const margin=model.maxOutreachM-p.outreachM;
-    score+=18-clamp(margin*2,0,10);
-    reasons.push(`Cumple alcance (${model.maxOutreachM}m ≥ ${p.outreachM}m).`);
-  } else { score-=40; warnings.push(`Alcance insuficiente (${model.maxOutreachM}m < ${p.outreachM}m).`); }
+  if(p.outreachM===null){
+    score+=6;
+  } else {
+    // Alcance real depende de la altura (curva del fabricante).
+    const allowed = reachAtHeight(model, p.heightM);
+    if(p.outreachM<=allowed){
+      const margin = allowed - p.outreachM;
+      score+=18-clamp(margin*2,0,10);
+      reasons.push(`Cumple alcance a ${p.heightM}m (máx ~${allowed.toFixed(1)}m ≥ ${p.outreachM}m).`);
+    } else {
+      score-=40;
+      eligible=false;
+      warnings.push(`Alcance insuficiente a ${p.heightM}m (máx ~${allowed.toFixed(1)}m < ${p.outreachM}m).`);
+    }
+  }
 
   if(p.accessWidthCm>=model.minAccessWidthCm){
     score+=22; reasons.push(`Pasa por acceso (ancho mín ${model.minAccessWidthCm}cm).`);
-  } else { score-=120; warnings.push(`No pasa por el acceso (ancho mín ${model.minAccessWidthCm}cm; disponible ${p.accessWidthCm}cm).`); }
+  } else { score-=120; eligible=false; warnings.push(`No pasa por el acceso (ancho mín ${model.minAccessWidthCm}cm; disponible ${p.accessWidthCm}cm).`); }
 
   if(p.accessHeightCm!=null){
     const neededCm=Math.round((model.stowedHeightM||0)*100);
     if(neededCm>0){
       if(p.accessHeightCm>=neededCm){ score+=10; reasons.push(`Altura de acceso OK (mín ${neededCm}cm).`); }
-      else { score-=90; warnings.push(`Altura de acceso insuficiente (mín ${neededCm}cm; disponible ${p.accessHeightCm}cm).`); }
+      else { score-=90; eligible=false; warnings.push(`Altura de acceso insuficiente (mín ${neededCm}cm; disponible ${p.accessHeightCm}cm).`); }
     }
   }
 
@@ -112,14 +149,14 @@ function scoreModel(model,p){
     if(p.elevatorMaxKg!=null){
       const machineKg=Number(model.weightKg)||0;
       if(p.elevatorMaxKg>=machineKg){ score+=8; reasons.push(`Ascensor soporta peso (equipo ${machineKg}kg ≤ máx ${p.elevatorMaxKg}kg).`); }
-      else { score-=140; warnings.push(`Ascensor NO soporta el peso (equipo ${machineKg}kg > máx ${p.elevatorMaxKg}kg).`); }
+      else { score-=140; eligible=false; warnings.push(`Ascensor NO soporta el peso (equipo ${machineKg}kg > máx ${p.elevatorMaxKg}kg).`); }
     }
     if(p.elevatorCabWidthCm!=null && p.elevatorCabDepthCm!=null){
       const needW=Math.round((model.stowedWidthM||0)*100);
       const needD=Math.round((model.stowedLengthM||0)*100);
-      if(p.elevatorCabWidthCm<needW){ score-=160; warnings.push(`Cabina: ancho insuficiente (mín ${needW}cm; disponible ${p.elevatorCabWidthCm}cm).`); }
+      if(p.elevatorCabWidthCm<needW){ score-=160; eligible=false; warnings.push(`Cabina: ancho insuficiente (mín ${needW}cm; disponible ${p.elevatorCabWidthCm}cm).`); }
       else { score+=6; reasons.push(`Cabina: ancho OK (mín ${needW}cm).`); }
-      if(p.elevatorCabDepthCm<needD){ score-=180; warnings.push(`Cabina: fondo insuficiente (mín ${needD}cm; disponible ${p.elevatorCabDepthCm}cm).`); }
+      if(p.elevatorCabDepthCm<needD){ score-=180; eligible=false; warnings.push(`Cabina: fondo insuficiente (mín ${needD}cm; disponible ${p.elevatorCabDepthCm}cm).`); }
       else { score+=6; reasons.push(`Cabina: fondo OK (mín ${needD}cm).`); }
     }
   }
@@ -143,10 +180,10 @@ function scoreModel(model,p){
     else { score-=6; warnings.push("Acceso negativo: PSO-11BL suele ser el más adecuado."); }
   }
 
-  return { score, reasons, warnings };
+  return { score, reasons, warnings, eligible };
 }
 
-function buildWhatsappText({company,contact,job,rec,legalText}){
+function buildWhatsappText({company,contact,job,quote,rec,legalText}){
   return [
     "Hola, solicito cotización formal con los siguientes datos:\n",
     "EMPRESA",
@@ -156,26 +193,31 @@ function buildWhatsappText({company,contact,job,rec,legalText}){
     `- Nombre: ${contact.contactName}`,
     `- Teléfono: ${contact.contactPhone}`,
     `- Email: ${contact.contactEmail}`,
+    "\nCOTIZACIÓN / ARRIENDO",
+    (quote?.rentalDays!=null ? `- Días de arriendo: ${quote.rentalDays}` : null),
+    (quote?.deliveryWindowLabel ? `- Horario de entrega: ${quote.deliveryWindowLabel}` : null),
+    (quote?.workSite ? `- Lugar: ${quote.workSite}` : null),
+
     "\nTRABAJO",
     `- Altura requerida: ${job.heightM} m`,
-    job.outreachM ? `- Alcance requerido: ${job.outreachM} m` : null,
+    job.outreachM!=null ? `- Alcance requerido: ${job.outreachM} m` : null,
     `- Tipo de trabajo: ${job.jobType}`,
     `- Interior/Exterior: ${job.indoor==="yes"?"Interior":"Exterior"}`,
     `- Terreno: ${job.terrain}`,
     job.slopeDeg!=null ? `- Inclinación: ${job.slopeDeg.toFixed(1)}°` : null,
     `- Tipo de acceso: ${job.accessType}`,
     `- Ancho disponible de acceso: ${job.accessWidthCm} cm`,
-    job.accessHeightCm ? `- Altura disponible de acceso: ${job.accessHeightCm} cm` : null,
-    job.accessType==="ascensor" && job.elevatorMaxKg ? `- Capacidad máxima ascensor: ${job.elevatorMaxKg} kg` : null,
-    job.accessType==="ascensor" && job.elevatorCabWidthCm ? `- Cabina ascensor (ancho): ${job.elevatorCabWidthCm} cm` : null,
-    job.accessType==="ascensor" && job.elevatorCabDepthCm ? `- Cabina ascensor (fondo): ${job.elevatorCabDepthCm} cm` : null,
+    job.accessHeightCm!=null ? `- Altura disponible de acceso: ${job.accessHeightCm} cm` : null,
+    job.accessType==="ascensor" && job.elevatorMaxKg!=null ? `- Capacidad máxima ascensor: ${job.elevatorMaxKg} kg` : null,
+    job.accessType==="ascensor" && job.elevatorCabWidthCm!=null ? `- Cabina ascensor (ancho): ${job.elevatorCabWidthCm} cm` : null,
+    job.accessType==="ascensor" && job.elevatorCabDepthCm!=null ? `- Cabina ascensor (fondo): ${job.elevatorCabDepthCm} cm` : null,
     job.emissionsRestriction==="yes" ? "- Restricción de emisiones/ruido: Sí" : "- Restricción de emisiones/ruido: No",
     job.needsNegativeAccess==="yes" ? "- Requiere acceso negativo: Sí" : "- Requiere acceso negativo: No",
     job.notes ? `- Notas: ${job.notes}` : null,
     "\nEQUIPO RECOMENDADO",
     `- Modelo: ${rec.name}`,
     `- Altura máx: ${rec.maxWorkingHeightM} m`,
-    `- Alcance máx: ${rec.maxOutreachM} m`,
+    `- ${reachLine(rec, job.heightM)}`,
     `- Energía: ${rec.power}`,
     "\n"+legalText,
   ].filter(Boolean).join("\n");
@@ -185,7 +227,7 @@ export default function App(){
   const [step,setStep]=useState(1); // 1..4
   const [submitStatus,setSubmitStatus]=useState(null);
 
-  const [heightM,setHeightM]=useState("");
+  const [heightM,setHeightM]=useState(18);
   const [outreachM,setOutreachM]=useState("");
   const [accessType,setAccessType]=useState("puerta");
   const [accessWidthCm,setAccessWidthCm]=useState("");
@@ -210,6 +252,11 @@ export default function App(){
   const [contactPhone,setContactPhone]=useState("");
   const [contactEmail,setContactEmail]=useState("");
 
+  // Datos comerciales para cotización
+  const [rentalDays,setRentalDays]=useState("");
+  const [workSite,setWorkSite]=useState("");
+  const [deliveryWindow,setDeliveryWindow]=useState("diurno"); // diurno | nocturno
+
   const legalText="La recomendación entregada por Grupo Vertikal se basa exclusivamente en la información proporcionada por el cliente y en las fichas técnicas de los equipos disponibles al momento de la consulta. Esta recomendación tiene carácter referencial y no constituye una validación técnica definitiva. La decisión final sobre la selección y uso del equipo es de exclusiva responsabilidad del cliente.";
 
   const slopeDeg = useMemo(()=>{
@@ -230,8 +277,21 @@ export default function App(){
     terrain, indoor, jobType, notes, emissionsRestriction, needsNegativeAccess, slopeDeg
   }),[heightM,outreachM,accessType,accessWidthCm,accessHeightCm,elevatorMaxKg,elevatorCabWidthCm,elevatorCabDepthCm,terrain,indoor,jobType,notes,emissionsRestriction,needsNegativeAccess,slopeDeg]);
 
-  const recommendations = useMemo(()=>PSO_CATALOG.map(m=>({...m,...scoreModel(m,jobParams)})).sort((a,b)=>b.score-a.score).slice(0,3),[jobParams]);
-  const top = recommendations[0]||null;
+  const quoteParams = useMemo(()=>({
+    rentalDays: rentalDays===""?null:Number(rentalDays),
+    workSite: String(workSite||"").trim(),
+    deliveryWindow,
+    deliveryWindowLabel: deliveryWindow==="nocturno" ? "Nocturno (17 a 9 hrs)" : "Diurno (9 a 17 hrs)",
+  }),[rentalDays,workSite,deliveryWindow]);
+
+  const { recommendations, top, noMatch } = useMemo(()=>{
+    const scored = PSO_CATALOG.map(m=>({ ...m, ...scoreModel(m, jobParams) }));
+    const eligible = scored.filter(m=>m.eligible);
+    const list = (eligible.length ? eligible : scored)
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,3);
+    return { recommendations: list, top: list[0] || null, noMatch: eligible.length === 0 };
+  },[jobParams]);
 
   const isElevator = accessType==="ascensor";
 
@@ -243,7 +303,10 @@ export default function App(){
   ));
   const step2Ok = Boolean(top);
   const step3Ok = companyName.trim().length>=2 && validateRut(companyRut) && contactName.trim().length>=2 &&
-    normalizePhone(contactPhone).length>=8 && isValidEmail(contactEmail);
+    normalizePhone(contactPhone).length>=8 && isValidEmail(contactEmail) &&
+    quoteParams.rentalDays!=null && quoteParams.rentalDays>0 &&
+    quoteParams.workSite.length>=3 &&
+    (quoteParams.deliveryWindow==="diurno" || quoteParams.deliveryWindow==="nocturno");
 
   const canGoNext = (step===1 && step1Ok) || (step===2 && step2Ok) || (step===3 && step3Ok) || step===4;
 
@@ -253,10 +316,11 @@ export default function App(){
       company:{companyName, companyRut: formatRut(companyRut)},
       contact:{contactName, contactPhone: normalizePhone(contactPhone), contactEmail:String(contactEmail||"").trim()},
       job: jobParams,
+      quote: quoteParams,
       rec: top,
       legalText
     });
-  },[companyName,companyRut,contactName,contactPhone,contactEmail,jobParams,top]);
+  },[companyName,companyRut,contactName,contactPhone,contactEmail,jobParams,quoteParams,top]);
 
   const whatsappUrl = useMemo(()=>{
     const encoded = encodeURIComponent(whatsappText);
@@ -275,6 +339,10 @@ export default function App(){
         contactName,
         contactPhone: normalizePhone(contactPhone),
         contactEmail: String(contactEmail||"").trim(),
+
+        rentalDays: quoteParams.rentalDays,
+        workSite: quoteParams.workSite,
+        deliveryWindow: quoteParams.deliveryWindowLabel,
 
         heightM: jobParams.heightM,
         reachM: jobParams.outreachM,
@@ -316,7 +384,7 @@ export default function App(){
     <div className="container">
       <div className="row">
         <div>
-          <div className="h1">Recomendador Spider - VertiTek</div>
+          <div className="h1">Recomendador Spider – Grupo Vertikal</div>
           <div className="sub">Recomendación técnica + cotización formal. (Fotos se solicitan luego si aplica.)</div>
         </div>
         <span className="badge">Paso {step} de 4</span>
@@ -329,7 +397,7 @@ export default function App(){
               <div style={{fontWeight:800,fontSize:16}}>{stepTitle(step)}</div>
               <div className="small">
                 {step===1 ? "Completa medidas y condiciones. Si es ascensor, se requieren datos PRO." : null}
-                {step===3 ? "Datos obligatorios para cotización formal." : null}
+                {step===3 ? "Datos obligatorios para cotización formal (incluye arriendo y entrega)." : null}
               </div>
             </div>
             {step===2 && top ? <span className="badge primary">Top: {top.name}</span> : null}
@@ -341,7 +409,7 @@ export default function App(){
               <div className="cols2">
                 <div>
                   <label>Altura requerida (m) ⭐</label>
-                  <input type="number" min="1" value={heightM} placeholder="Ej: 18" onChange={(e)=>setHeightM(e.target.value)} />
+                  <input type="number" min="1" value={heightM} onChange={(e)=>setHeightM(e.target.value)} />
                 </div>
                 <div>
                   <label>Alcance horizontal requerido (m) (opcional)</label>
@@ -468,9 +536,17 @@ export default function App(){
 
                     <div className="cols2" style={{marginTop:10}}>
                       <div className="kpi"><div className="small">Altura máx</div><div style={{fontWeight:800}}>{fmt(top.maxWorkingHeightM," m")}</div></div>
-                      <div className="kpi"><div className="small">Alcance máx</div><div style={{fontWeight:800}}>{fmt(top.maxOutreachM," m")}</div></div>
+                      <div className="kpi">
+                        <div className="small">Alcance máx a {Number(jobParams.heightM).toFixed(0)}m</div>
+                        <div style={{fontWeight:800}}>{reachAtHeight(top, jobParams.heightM).toFixed(1)} m</div>
+                        {top.outreachCapacityKg ? <div className="small">(con {top.outreachCapacityKg} kg)</div> : null}
+                      </div>
                       <div className="kpi"><div className="small">Acceso mín</div><div style={{fontWeight:800}}>{fmt(top.minAccessWidthCm," cm")}</div></div>
                       <div className="kpi"><div className="small">Peso</div><div style={{fontWeight:800}}>{fmt(top.weightKg," kg")}</div></div>
+                    </div>
+
+                    <div className="small" style={{marginTop:10}}>
+                      {reachLine(top, jobParams.heightM)}
                     </div>
 
                     <div style={{marginTop:10}}>
@@ -505,7 +581,7 @@ export default function App(){
             <>
               <hr/>
               <div className="cols2">
-                <div style={{gridColumn:"1 / -1"}} className="notice"><strong>Estos datos son obligatorios</strong> para emitir una cotización formal.</div>
+                <div style={{gridColumn:"1 / -1"}} className="notice"><strong>Estos datos son obligatorios</strong> para emitir una cotización formal (incluye días, lugar y horario de entrega).</div>
 
                 <div>
                   <label>Nombre empresa ⭐</label>
@@ -533,9 +609,34 @@ export default function App(){
                   <input value={contactEmail} onChange={(e)=>setContactEmail(e.target.value)} placeholder="correo@empresa.cl" />
                   {contactEmail && !isValidEmail(contactEmail) ? <div className="help" style={{color:"#b00020"}}>Correo inválido.</div> : null}
                 </div>
+
+                <div style={{gridColumn:"1 / -1"}} className="notice">
+                  <strong>Datos del arriendo</strong>
+                  <div className="small" style={{marginTop:6}}>Indícanos días, lugar y horario de entrega para preparar la cotización.</div>
+                  <div className="small" style={{marginTop:6}}>Tipo de trabajo indicado: <strong>{jobType}</strong>. (Si debes cambiarlo, vuelve al Paso 1.)</div>
+                </div>
+
+                <div>
+                  <label>Días de arriendo ⭐</label>
+                  <input type="number" min="1" value={rentalDays} onChange={(e)=>setRentalDays(e.target.value)} placeholder="Ej: 3" />
+                </div>
+
+                <div>
+                  <label>Horario de entrega ⭐</label>
+                  <select value={deliveryWindow} onChange={(e)=>setDeliveryWindow(e.target.value)}>
+                    <option value="diurno">Diurno (9 a 17 hrs)</option>
+                    <option value="nocturno">Nocturno (17 a 9 hrs)</option>
+                  </select>
+                </div>
+
+                <div style={{gridColumn:"1 / -1"}}>
+                  <label>Lugar donde necesita el equipo ⭐</label>
+                  <textarea value={workSite} onChange={(e)=>setWorkSite(e.target.value)} placeholder="Dirección, comuna, ciudad + indicaciones de acceso" />
+                  <div className="help">Si es obra o planta, incluye portería / contacto en terreno si aplica.</div>
+                </div>
               </div>
 
-              {!step3Ok && <div className="notice err" style={{marginTop:12}}>Completa empresa, RUT válido y datos de contacto.</div>}
+              {!step3Ok && <div className="notice err" style={{marginTop:12}}>Completa empresa, RUT válido, datos de contacto y datos del arriendo.</div>}
             </>
           )}
 
@@ -551,9 +652,11 @@ export default function App(){
                   {top ? <span className="badge primary">{top.name}</span> : null}
                 </div>
 
+                <div className="small" style={{marginTop:10,lineHeight:1.6}}>                  <div>Días de arriendo: <strong>{quoteParams.rentalDays!=null ? `${quoteParams.rentalDays} día(s)` : "—"}</strong></div>                  <div>Horario de entrega: <strong>{quoteParams.deliveryWindowLabel}</strong></div>                  <div>Lugar: <strong>{quoteParams.workSite || "—"}</strong></div>                </div>
+
                 <div className="btnbar" style={{marginTop:12}}>
                   <button className="primary" onClick={submitToApptivo} disabled={!top || submitStatus?.kind==="loading"}>
-                    Solicitar Cotización
+                    Solicitar cotización
                   </button>
                   <button className="secondary" onClick={()=>window.open(whatsappUrl,"_blank")} disabled={!top}>
                     WhatsApp (opcional)
@@ -579,9 +682,9 @@ export default function App(){
             <button onClick={()=>setStep(s=>Math.max(1,s-1))} disabled={step===1}>Atrás</button>
             <div className="small">
               {step===1 && !step1Ok ? (isElevator ? "Ascensor: completa alto + peso + cabina." : "Completa altura y ancho.") : null}
-              {step===3 && !step3Ok ? "Completa datos para cotización." : null}
+              {step===3 && !step3Ok ? "Completa datos para cotización (incluye arriendo y entrega)." : null}
             </div>
-            {step<4 ? (<button className="primary" onClick={()=>setStep(s=>Math.min(4,s+1))} disabled={!canGoNext}>Siguiente</button>) : (<span />)}
+            <button className="primary" onClick={()=>setStep(s=>Math.min(4,s+1))} disabled={!canGoNext}>Siguiente</button>
           </div>
         </div>
 
@@ -606,6 +709,9 @@ export default function App(){
             <div>Cabina fondo: <strong>{fmt(elevatorCabDepthCm," cm")}</strong></div>
             <div>Interior: <strong>{indoor==="yes"?"Sí":"No"}</strong></div>
             <div>Inclinación: <strong>{jobParams.slopeDeg!=null ? `${jobParams.slopeDeg.toFixed(1)}°` : "—"}</strong></div>
+            <div>Arriendo: <strong>{quoteParams.rentalDays!=null ? `${quoteParams.rentalDays} día(s)` : "—"}</strong></div>
+            <div>Entrega: <strong>{quoteParams.deliveryWindowLabel}</strong></div>
+            <div>Lugar: <strong>{quoteParams.workSite ? (quoteParams.workSite.length>48 ? quoteParams.workSite.slice(0,48)+"…" : quoteParams.workSite) : "—"}</strong></div>
           </div>
 
           <hr/>
@@ -613,7 +719,8 @@ export default function App(){
           {top ? (
             <div className="small" style={{marginTop:8,lineHeight:1.6}}>
               <div><strong>{top.name}</strong></div>
-              <div>Altura {top.maxWorkingHeightM}m · Alcance {top.maxOutreachM}m</div>
+              <div>Altura {top.maxWorkingHeightM}m</div>
+              <div>{reachLine(top, jobParams.heightM)}</div>
               <div>Acceso mín {top.minAccessWidthCm}cm · Altura plegada {Math.round(top.stowedHeightM*100)}cm</div>
               <div>Peso {top.weightKg}kg</div>
             </div>
