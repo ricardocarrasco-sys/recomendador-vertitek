@@ -916,16 +916,16 @@ export default function App() {
           )}
 
           <div className="btnbar">
-  <button onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1}>
-    Atrás
-  </button>
+            <button onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1}>
+              Atrás
+            </button>
 
-  {step < 4 ? (
-    <button className="primary" onClick={() => setStep((s) => Math.min(4, s + 1))} disabled={!canGoNext}>
-      Siguiente
-    </button>
-  ) : null}
-</div>
+            {step < 4 ? (
+              <button className="primary" onClick={() => setStep((s) => Math.min(4, s + 1))} disabled={!canGoNext}>
+                Siguiente
+              </button>
+            ) : null}
+          </div>
         <div className="card">
           <div style={{ fontWeight: 800 }}>Top sugerido</div>
           <div className="small" style={{ marginTop: 8 }}>
