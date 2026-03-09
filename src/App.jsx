@@ -9,7 +9,6 @@ import React, { useMemo, useState } from "react";
  * - WhatsApp como respaldo opcional
  */
 
-
 const PSO_CATALOG = [
   {
     id: "pso-11bl",
@@ -522,6 +521,10 @@ export default function App() {
   const [elevatorCabWidthCm, setElevatorCabWidthCm] = useState("");
   const [elevatorCabDepthCm, setElevatorCabDepthCm] = useState("");
 
+  // ✅ NUEVO: Motorización (opcional)
+  const [motorPref, setMotorPref] = useState("any");
+  // any | bi | hybrid | battery
+
   const [terrain, setTerrain] = useState("Plano");
   const [indoor, setIndoor] = useState("no");
   const [jobType, setJobType] = useState("Mantención");
@@ -565,6 +568,10 @@ export default function App() {
       elevatorMaxKg: toNum(elevatorMaxKg),
       elevatorCabWidthCm: toNum(elevatorCabWidthCm),
       elevatorCabDepthCm: toNum(elevatorCabDepthCm),
+
+      // ✅ NUEVO
+      motorPref,
+
       terrain,
       indoor,
       jobType,
@@ -582,6 +589,7 @@ export default function App() {
       elevatorMaxKg,
       elevatorCabWidthCm,
       elevatorCabDepthCm,
+      motorPref,
       terrain,
       indoor,
       jobType,
@@ -602,9 +610,26 @@ export default function App() {
     [rentalDays, workSite, deliveryWindow]
   );
 
-  // Recomendación SOLO con elegibles (sin fallback)
+  // ✅ Recomendación SOLO con elegibles + filtro por motorización
   const recommendations = useMemo(() => {
-    const eligible = PSO_CATALOG.filter((m) => isEligible(m, jobParams));
+    const eligible = PSO_CATALOG.filter((m) => {
+      if (!isEligible(m, jobParams)) return false;
+
+      // 1) Cualquiera
+      if (jobParams.motorPref === "any") return true;
+
+      // 2) Motor combustión + motor eléctrico 220V (bi-energía)
+      if (jobParams.motorPref === "bi") return m.powerType === "diesel-220" || m.powerType === "gas-220";
+
+      // 3) Híbrido (Diesel/Batería Litio)
+      if (jobParams.motorPref === "hybrid") return m.powerType === "hybrid";
+
+      // 4) Batería (Litio) => eléctricos
+      if (jobParams.motorPref === "battery") return m.powerType === "electric";
+
+      return true;
+    });
+
     if (eligible.length === 0) return [];
     const scored = eligible.map((m) => ({ ...m, ...scoreModel(m, jobParams) }));
     return scored.sort((a, b) => b.score - a.score).slice(0, 3);
@@ -697,6 +722,9 @@ export default function App() {
         elevatorCabinWidthCm: jobParams.elevatorCabWidthCm,
         elevatorCabinDepthCm: jobParams.elevatorCabDepthCm,
 
+        // (Opcional) si quieres guardar preferencia en Apptivo:
+        // motorPref: jobParams.motorPref,
+
         recommendedModel: top.name,
         recommendationReason: (top.reasons || []).slice(0, 6).join(" | "),
         legalText,
@@ -748,7 +776,7 @@ export default function App() {
               <div className="cols2">
                 <div>
                   <label>Altura requerida (m) ⭐</label>
-                  <input type="number" min="1" value={heightM} onChange={(e) => setHeightM(e.target.value)} placeholder= "Ej: 11" />
+                  <input type="number" min="1" value={heightM} onChange={(e) => setHeightM(e.target.value)} placeholder="Ej: 11" />
                 </div>
 
                 <div>
@@ -759,6 +787,17 @@ export default function App() {
                       Alcance inválido. Usa número con punto o coma (ej: 12,5).
                     </div>
                   ) : null}
+                </div>
+
+                {/* ✅ NUEVO: Motorización */}
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label>Motorización (opcional)</label>
+                  <select value={motorPref} onChange={(e) => setMotorPref(e.target.value)}>
+                    <option value="any">1. Cualquiera</option>
+                    <option value="bi">2. Motor a combustión y motor eléctrico de 220volts</option>
+                    <option value="hybrid">3. Hibrido (Diesel / Bateria de Litio)</option>
+                    <option value="battery">4. Batería (Batería de Litio)</option>
+                  </select>
                 </div>
 
                 <div>
@@ -892,7 +931,9 @@ export default function App() {
           <div className="small" style={{ marginTop: 8 }}>
             {top ? (
               <>
-                <div><strong>{top.name}</strong></div>
+                <div>
+                  <strong>{top.name}</strong>
+                </div>
                 <div>{reachLine(top, jobParams.heightM)}</div>
               </>
             ) : (
