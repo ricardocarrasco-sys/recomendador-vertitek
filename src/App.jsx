@@ -1,17 +1,15 @@
-from pathlib import Path
-
-app_code = r'''import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 /**
- * Recomendador Spider – VertiTek (v3.2)
- * - Hard filter real: NO recomienda modelos que no cumplan alcance/altura/acceso
+ * Recomendador Spider – VertiTek (v3.2 FIX)
+ * - Hard filter real: NO recomienda modelos que no cumplan alcance/altura/acceso (usa working envelope)
  * - Parseo numérico robusto: acepta coma decimal (12,5) y evita NaN
+ * - Cotización: días de arriendo + lugar + horario (diurno/nocturno)
  * - Envío directo a Apptivo (Leads) vía /api/apptivo-lead
- * - WhatsApp queda como respaldo opcional
+ * - WhatsApp como respaldo opcional
  */
 
-// Etiqueta visible para verificar que Vercel está sirviendo el build correcto.
-const BUILD_TAG = "ENVELOPE_V3.2 + HARD_FILTER + ARRIENDO_V1 (2026-03-09)";
+const BUILD_TAG = "ENVELOPE_V3.2_FIX + HARD_FILTER + ARRIENDO_V1 (2026-03-09)";
 
 const PSO_CATALOG = [
   {
@@ -250,8 +248,8 @@ const cleanRut = (rut) => String(rut || "").toUpperCase().replace(/[^0-9K]/g, ""
 const formatRut = (rut) => {
   const c = cleanRut(rut);
   if (c.length < 2) return rut || "";
-  const body = c.slice(0, -1),
-    dv = c.slice(-1);
+  const body = c.slice(0, -1);
+  const dv = c.slice(-1);
   let out = "";
   for (let i = body.length - 1, j = 0; i >= 0; i--, j++) {
     out = body[i] + out;
@@ -263,10 +261,10 @@ const formatRut = (rut) => {
 const validateRut = (rut) => {
   const c = cleanRut(rut);
   if (c.length < 2) return false;
-  const body = c.slice(0, -1),
-    dv = c.slice(-1);
-  let sum = 0,
-    mul = 2;
+  const body = c.slice(0, -1);
+  const dv = c.slice(-1);
+  let sum = 0;
+  let mul = 2;
   for (let i = body.length - 1; i >= 0; i--) {
     sum += Number(body[i]) * mul;
     mul = mul === 7 ? 2 : mul + 1;
@@ -282,14 +280,14 @@ const degFromPercent = (pct) => {
   return (Math.atan(p / 100) * 180) / Math.PI;
 };
 
-// Working envelope: alcance máximo aproximado para una altura dada (interpolación lineal).
+// Alcance máximo aproximado para una altura dada (interpolación lineal).
 function reachAtHeight(model, heightM) {
   const env = model?.envelope;
   if (!Array.isArray(env) || env.length < 2) return model.maxOutreachM;
   const h = Math.max(env[0].h, Math.min(heightM, env[env.length - 1].h));
   for (let i = 0; i < env.length - 1; i++) {
-    const a = env[i],
-      b = env[i + 1];
+    const a = env[i];
+    const b = env[i + 1];
     if (h >= a.h && h <= b.h) {
       const t = (h - a.h) / (b.h - a.h || 1);
       return a.r + t * (b.r - a.r);
@@ -301,27 +299,23 @@ function reachAtHeight(model, heightM) {
 // Hard constraints: si falla cualquiera, el modelo NO debe recomendarse.
 function hardFails(model, p) {
   const fails = [];
-  // Altura
+
   if (p.heightM > model.maxWorkingHeightM + 1e-9) fails.push("altura");
 
-  // Alcance real a esa altura (según curva)
   if (p.outreachM != null) {
     const allowed = reachAtHeight(model, p.heightM);
     if (p.outreachM > allowed + 0.05) fails.push("alcance");
   }
 
-  // Acceso (ancho)
   if (p.accessWidthCm != null) {
     if (p.accessWidthCm < model.minAccessWidthCm - 1e-9) fails.push("ancho");
   }
 
-  // Altura de acceso (si se informó)
   if (p.accessHeightCm != null) {
     const neededCm = Math.round((model.stowedHeightM || 0) * 100);
     if (p.accessHeightCm < neededCm - 1e-9) fails.push("alto");
   }
 
-  // Restricciones de ascensor (si aplica)
   if (p.accessType === "ascensor") {
     const machineKg = Number(model.weightKg) || 0;
     if (p.elevatorMaxKg != null && machineKg > p.elevatorMaxKg + 1e-9) fails.push("peso");
@@ -339,7 +333,7 @@ function isEligible(model, p) {
   return hardFails(model, p).length === 0;
 }
 
-// Texto de ayuda para UI: alcance máximo a una altura, indicando carga según ficha.
+// Texto para UI: alcance máx a altura solicitada, indicando carga según ficha.
 function reachLine(model, heightM) {
   const h = Number(heightM || 0);
   const allowed = reachAtHeight(model, h);
@@ -349,8 +343,8 @@ function reachLine(model, heightM) {
 }
 
 function scoreModel(model, p) {
-  const reasons = [],
-    warnings = [];
+  const reasons = [];
+  const warnings = [];
   let score = 0;
 
   if (p.heightM <= model.maxWorkingHeightM) {
@@ -376,7 +370,7 @@ function scoreModel(model, p) {
     }
   }
 
-  // Acceso: solo puntúa si el usuario ingresó ancho
+  // Acceso: solo puntúa si se ingresó ancho
   if (p.accessWidthCm != null) {
     if (p.accessWidthCm >= model.minAccessWidthCm) {
       score += 22;
@@ -516,9 +510,10 @@ function buildWhatsappText({ company, contact, job, quote, rec, legalText }) {
 }
 
 export default function App() {
-  const [step, setStep] = useState(1); // 1..4
+  const [step, setStep] = useState(1);
   const [submitStatus, setSubmitStatus] = useState(null);
 
+  // Trabajo
   const [heightM, setHeightM] = useState(18);
   const [outreachM, setOutreachM] = useState("");
   const [accessType, setAccessType] = useState("puerta");
@@ -538,16 +533,17 @@ export default function App() {
   const [slopeUnit, setSlopeUnit] = useState("deg");
   const [slopeValue, setSlopeValue] = useState("");
 
+  // Empresa/contacto
   const [companyName, setCompanyName] = useState("");
   const [companyRut, setCompanyRut] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
 
-  // Datos comerciales para cotización
+  // Cotización / arriendo
   const [rentalDays, setRentalDays] = useState("");
   const [workSite, setWorkSite] = useState("");
-  const [deliveryWindow, setDeliveryWindow] = useState("diurno"); // diurno | nocturno
+  const [deliveryWindow, setDeliveryWindow] = useState("diurno");
 
   const legalText =
     "La recomendación entregada por Grupo Vertikal se basa exclusivamente en la información proporcionada por el cliente y en las fichas técnicas de los equipos disponibles al momento de la consulta. Esta recomendación tiene carácter referencial y no constituye una validación técnica definitiva. La decisión final sobre la selección y uso del equipo es de exclusiva responsabilidad del cliente.";
@@ -607,7 +603,7 @@ export default function App() {
     [rentalDays, workSite, deliveryWindow]
   );
 
-  // Recomendación SOLO con elegibles. Si no hay elegibles, lista vacía.
+  // Recomendación SOLO con elegibles (sin fallback)
   const recommendations = useMemo(() => {
     const eligible = PSO_CATALOG.filter((m) => isEligible(m, jobParams));
     if (eligible.length === 0) return [];
@@ -721,7 +717,8 @@ export default function App() {
     }
   }
 
-  const stepTitle = (s) => ({ 1: "Datos del trabajo", 2: "Recomendación", 3: "Datos para cotización", 4: "Enviar solicitud" }[s] || "");
+  const stepTitle = (s) =>
+    ({ 1: "Datos del trabajo", 2: "Recomendación", 3: "Datos para cotización", 4: "Enviar solicitud" }[s] || "");
 
   return (
     <div className="container">
@@ -755,9 +752,10 @@ export default function App() {
                   <label>Altura requerida (m) ⭐</label>
                   <input type="number" min="1" value={heightM} onChange={(e) => setHeightM(e.target.value)} />
                 </div>
+
                 <div>
                   <label>Alcance horizontal requerido (m) (opcional)</label>
-                  <input type="text" value={outreachM} onChange={(e) => setOutreachM(e.target.value)} placeholder="Ej: 10 o 10.5" />
+                  <input type="text" value={outreachM} onChange={(e) => setOutreachM(e.target.value)} placeholder="Ej: 12 o 12,5" />
                   {outreachInvalid ? (
                     <div className="help" style={{ color: "#b00020" }}>
                       Alcance inválido. Usa número con punto o coma (ej: 12,5).
@@ -786,91 +784,11 @@ export default function App() {
                   <input type="text" value={accessHeightCm} onChange={(e) => setAccessHeightCm(e.target.value)} placeholder="Ej: 200" />
                 </div>
 
-                <div>
-                  <label>Inclinación del terreno</label>
-                  <div className="cols2" style={{ gridTemplateColumns: "2fr 1fr" }}>
-                    <input type="text" value={slopeValue} onChange={(e) => setSlopeValue(e.target.value)} placeholder={slopeUnit === "deg" ? "Ej: 8" : "Ej: 12"} />
-                    <select value={slopeUnit} onChange={(e) => setSlopeUnit(e.target.value)}>
-                      <option value="deg">Grados (°)</option>
-                      <option value="pct">Porcentaje (%)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {isElevator && (
-                  <>
-                    <div>
-                      <label>Capacidad máxima del ascensor (kg) ⭐</label>
-                      <input type="text" value={elevatorMaxKg} onChange={(e) => setElevatorMaxKg(e.target.value)} placeholder="Ej: 1000" />
-                    </div>
-                    <div>
-                      <label>Cabina ascensor – ancho interno (cm) ⭐</label>
-                      <input type="text" value={elevatorCabWidthCm} onChange={(e) => setElevatorCabWidthCm(e.target.value)} placeholder="Ej: 120" />
-                    </div>
-                    <div>
-                      <label>Cabina ascensor – fondo/profundidad (cm) ⭐</label>
-                      <input type="text" value={elevatorCabDepthCm} onChange={(e) => setElevatorCabDepthCm(e.target.value)} placeholder="Ej: 140" />
-                    </div>
-                    <div className="notice">
-                      <strong>Nota:</strong> En ascensores, el <strong>fondo</strong> suele ser el factor crítico.
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <label>Interior / Exterior</label>
-                  <select value={indoor} onChange={(e) => setIndoor(e.target.value)}>
-                    <option value="no">Exterior</option>
-                    <option value="yes">Interior</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label>Tipo de terreno</label>
-                  <select value={terrain} onChange={(e) => setTerrain(e.target.value)}>
-                    <option value="Plano">Plano</option>
-                    <option value="Mixto">Mixto</option>
-                    <option value="Irregular">Irregular</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label>Restricción de ruido/emisiones</label>
-                  <select value={emissionsRestriction} onChange={(e) => setEmissionsRestriction(e.target.value)}>
-                    <option value="no">No</option>
-                    <option value="yes">Sí</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label>¿Requiere acceso negativo?</label>
-                  <select value={needsNegativeAccess} onChange={(e) => setNeedsNegativeAccess(e.target.value)}>
-                    <option value="no">No</option>
-                    <option value="yes">Sí</option>
-                  </select>
-                </div>
-
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label>Tipo de trabajo</label>
-                  <select value={jobType} onChange={(e) => setJobType(e.target.value)}>
-                    <option value="Mantención">Mantención / limpieza</option>
-                    <option value="Instalación">Instalación</option>
-                    <option value="Construcción">Construcción / montaje</option>
-                    <option value="Inspección">Inspección</option>
-                  </select>
-                </div>
-
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label>Notas</label>
                   <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Cables, desnivel, piso delicado, puerta exacta..." />
                 </div>
               </div>
-
-              {!step1Ok && (
-                <div className="notice err" style={{ marginTop: 12 }}>
-                  {isElevator ? "Falta completar: ancho + altura + peso máx + cabina (ancho y fondo)." : "Falta completar: altura y ancho de acceso."}
-                </div>
-              )}
             </>
           )}
 
@@ -881,69 +799,13 @@ export default function App() {
                 <div className="notice">Completa los datos del trabajo para obtener una recomendación.</div>
               ) : !top ? (
                 <div className="notice err">
-                  <strong>No hay equipo compatible</strong> con las medidas ingresadas (altura/alcance/acceso). Ajusta los valores o contáctanos para evaluación técnica.
+                  <strong>No hay equipo compatible</strong> con las medidas ingresadas (altura/alcance/acceso).
                 </div>
               ) : (
-                <>
-                  <div className="notice">
-                    <div className="row">
-                      <div>
-                        <div style={{ fontWeight: 800 }}>{top.name}</div>
-                        <div className="small">Puntaje: {Math.round(top.score)}</div>
-                      </div>
-                      <span className="badge primary">Mejor opción</span>
-                    </div>
-
-                    <div className="cols2" style={{ marginTop: 10 }}>
-                      <div className="kpi">
-                        <div className="small">Altura máx</div>
-                        <div style={{ fontWeight: 800 }}>{fmt(top.maxWorkingHeightM, " m")}</div>
-                      </div>
-                      <div className="kpi">
-                        <div className="small">Alcance máx a {Number(jobParams.heightM).toFixed(0)}m</div>
-                        <div style={{ fontWeight: 800 }}>{reachAtHeight(top, jobParams.heightM).toFixed(1)} m</div>
-                        {top.outreachCapacityKg ? <div className="small">(con {top.outreachCapacityKg} kg)</div> : null}
-                      </div>
-                      <div className="kpi">
-                        <div className="small">Acceso mín</div>
-                        <div style={{ fontWeight: 800 }}>{fmt(top.minAccessWidthCm, " cm")}</div>
-                      </div>
-                      <div className="kpi">
-                        <div className="small">Peso</div>
-                        <div style={{ fontWeight: 800 }}>{fmt(top.weightKg, " kg")}</div>
-                      </div>
-                    </div>
-
-                    <div className="small" style={{ marginTop: 10 }}>
-                      {reachLine(top, jobParams.heightM)}
-                    </div>
-
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ fontWeight: 800 }}>Por qué</div>
-                      <ul className="ul">{top.reasons.slice(0, 6).map((r, i) => <li key={i}>{r}</li>)}</ul>
-                    </div>
-
-                    {top.warnings.length ? (
-                      <div style={{ marginTop: 10 }}>
-                        <div style={{ fontWeight: 800 }}>Ojo</div>
-                        <ul className="ul">{top.warnings.slice(0, 6).map((w, i) => <li key={i}>{w}</li>)}</ul>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {recommendations.length > 1 && (
-                    <div className="notice" style={{ marginTop: 12 }}>
-                      <div style={{ fontWeight: 800 }}>Alternativas</div>
-                      <ul className="ul">
-                        {recommendations.slice(1).map((m) => (
-                          <li key={m.id}>
-                            {m.name} — puntaje {Math.round(m.score)} (Acceso mín {m.minAccessWidthCm}cm)
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </>
+                <div className="notice">
+                  <div style={{ fontWeight: 800 }}>{top.name}</div>
+                  <div className="small">{reachLine(top, jobParams.heightM)}</div>
+                </div>
               )}
             </>
           )}
@@ -952,55 +814,25 @@ export default function App() {
             <>
               <hr />
               <div className="cols2">
-                <div style={{ gridColumn: "1 / -1" }} className="notice">
-                  <strong>Estos datos son obligatorios</strong> para emitir una cotización formal (incluye días, lugar y horario de entrega).
-                </div>
-
                 <div>
                   <label>Nombre empresa ⭐</label>
                   <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
                 </div>
-
                 <div>
                   <label>RUT empresa ⭐</label>
                   <input value={formatRut(companyRut)} onChange={(e) => setCompanyRut(e.target.value)} placeholder="76.123.456-7" />
-                  {companyRut && !validateRut(companyRut) ? (
-                    <div className="help" style={{ color: "#b00020" }}>
-                      RUT inválido.
-                    </div>
-                  ) : (
-                    <div className="help">Formato sugerido: 12.345.678-9</div>
-                  )}
                 </div>
-
                 <div>
                   <label>Nombre contacto ⭐</label>
                   <input value={contactName} onChange={(e) => setContactName(e.target.value)} />
                 </div>
-
                 <div>
                   <label>Teléfono contacto ⭐</label>
                   <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+56 9 1234 5678" />
                 </div>
-
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label>Correo electrónico contacto ⭐</label>
                   <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="correo@empresa.cl" />
-                  {contactEmail && !isValidEmail(contactEmail) ? (
-                    <div className="help" style={{ color: "#b00020" }}>
-                      Correo inválido.
-                    </div>
-                  ) : null}
-                </div>
-
-                <div style={{ gridColumn: "1 / -1" }} className="notice">
-                  <strong>Datos del arriendo</strong>
-                  <div className="small" style={{ marginTop: 6 }}>
-                    Indícanos días, lugar y horario de entrega para preparar la cotización.
-                  </div>
-                  <div className="small" style={{ marginTop: 6 }}>
-                    Tipo de trabajo indicado: <strong>{jobType}</strong>. (Si debes cambiarlo, vuelve al Paso 1.)
-                  </div>
                 </div>
 
                 <div>
@@ -1019,11 +851,8 @@ export default function App() {
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label>Lugar donde necesita el equipo ⭐</label>
                   <textarea value={workSite} onChange={(e) => setWorkSite(e.target.value)} placeholder="Dirección, comuna, ciudad + indicaciones de acceso" />
-                  <div className="help">Si es obra o planta, incluye portería / contacto en terreno si aplica.</div>
                 </div>
               </div>
-
-              {!step3Ok ? <div className="notice err" style={{ marginTop: 12 }}>Completa empresa, RUT válido, datos de contacto y datos del arriendo.</div> : null}
             </>
           )}
 
@@ -1031,27 +860,7 @@ export default function App() {
             <>
               <hr />
               <div className="notice">
-                <div className="row">
-                  <div>
-                    <div style={{ fontWeight: 800 }}>Enviar solicitud</div>
-                    <div className="small">Esto creará un Lead en Apptivo y notificará al equipo.</div>
-                  </div>
-                  {top ? <span className="badge primary">{top.name}</span> : null}
-                </div>
-
-                <div className="small" style={{ marginTop: 10, lineHeight: 1.6 }}>
-                  <div>
-                    Días de arriendo: <strong>{quoteParams.rentalDays != null ? `${quoteParams.rentalDays} día(s)` : "—"}</strong>
-                  </div>
-                  <div>
-                    Horario de entrega: <strong>{quoteParams.deliveryWindowLabel}</strong>
-                  </div>
-                  <div>
-                    Lugar: <strong>{quoteParams.workSite || "—"}</strong>
-                  </div>
-                </div>
-
-                <div className="btnbar" style={{ marginTop: 12 }}>
+                <div className="btnbar">
                   <button className="primary" onClick={submitToApptivo} disabled={!top || submitStatus?.kind === "loading"}>
                     Solicitar cotización
                   </button>
@@ -1066,11 +875,6 @@ export default function App() {
                     {submitStatus.msg}
                   </div>
                 ) : null}
-
-                <div className="notice" style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 800 }}>Cláusula</div>
-                  <div className="small" style={{ marginTop: 6 }}>{legalText}</div>
-                </div>
               </div>
             </>
           )}
@@ -1079,10 +883,6 @@ export default function App() {
             <button onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1}>
               Atrás
             </button>
-            <div className="small">
-              {step === 1 && !step1Ok ? (isElevator ? "Ascensor: completa alto + peso + cabina." : "Completa altura y ancho.") : null}
-              {step === 3 && !step3Ok ? "Completa datos para cotización (incluye arriendo y entrega)." : null}
-            </div>
             <button className="primary" onClick={() => setStep((s) => Math.min(4, s + 1))} disabled={!canGoNext}>
               Siguiente
             </button>
@@ -1090,84 +890,17 @@ export default function App() {
         </div>
 
         <div className="card">
-          <div className="row">
-            <div>
-              <div style={{ fontWeight: 800 }}>Estado</div>
-              <div className="small">Checklist de avance</div>
-            </div>
-            <span className="badge">Apptivo-ready</span>
-          </div>
-          <hr />
-          <div className="row">
-            <span>Datos trabajo</span>
-            <span className={`badge ${step1Ok ? "ok" : ""}`}>{step1Ok ? "OK" : "Pendiente"}</span>
-          </div>
-          <div className="row">
-            <span>Recomendación</span>
-            <span className={`badge ${step2Ok ? "ok" : ""}`}>{step2Ok ? "OK" : "Pendiente"}</span>
-          </div>
-          <div className="row">
-            <span>Datos cotización</span>
-            <span className={`badge ${step3Ok ? "ok" : ""}`}>{step3Ok ? "OK" : "Pendiente"}</span>
-          </div>
-
-          <hr />
-          <div style={{ fontWeight: 800 }}>Resumen rápido</div>
-          <div className="small" style={{ marginTop: 8, lineHeight: 1.6 }}>
-            <div>
-              Altura: <strong>{fmt(heightM, " m")}</strong>
-            </div>
-            <div>
-              Acceso: <strong>{fmt(accessWidthCm, " cm")}</strong>
-            </div>
-            <div>
-              Altura acceso: <strong>{fmt(accessHeightCm, " cm")}</strong>
-            </div>
-            <div>
-              Ascensor (kg): <strong>{fmt(elevatorMaxKg, " kg")}</strong>
-            </div>
-            <div>
-              Cabina ancho: <strong>{fmt(elevatorCabWidthCm, " cm")}</strong>
-            </div>
-            <div>
-              Cabina fondo: <strong>{fmt(elevatorCabDepthCm, " cm")}</strong>
-            </div>
-            <div>
-              Interior: <strong>{indoor === "yes" ? "Sí" : "No"}</strong>
-            </div>
-            <div>
-              Inclinación: <strong>{jobParams.slopeDeg != null ? `${jobParams.slopeDeg.toFixed(1)}°` : "—"}</strong>
-            </div>
-            <div>
-              Arriendo: <strong>{quoteParams.rentalDays != null ? `${quoteParams.rentalDays} día(s)` : "—"}</strong>
-            </div>
-            <div>
-              Entrega: <strong>{quoteParams.deliveryWindowLabel}</strong>
-            </div>
-            <div>
-              Lugar: <strong>{quoteParams.workSite ? (quoteParams.workSite.length > 48 ? quoteParams.workSite.slice(0, 48) + "…" : quoteParams.workSite) : "—"}</strong>
-            </div>
-          </div>
-
-          <hr />
           <div style={{ fontWeight: 800 }}>Top sugerido</div>
-          {top ? (
-            <div className="small" style={{ marginTop: 8, lineHeight: 1.6 }}>
-              <div>
-                <strong>{top.name}</strong>
-              </div>
-              <div>Altura {top.maxWorkingHeightM}m</div>
-              <div>{reachLine(top, jobParams.heightM)}</div>
-              <div>
-                Acceso mín {top.minAccessWidthCm}cm · Altura plegada {Math.round(top.stowedHeightM * 100)}cm
-              </div>
-              <div>Peso {top.weightKg}kg</div>
-            </div>
-          ) : (
-            <div className="small" style={{ marginTop: 8 }}>
-              {step1Ok ? "No hay equipo compatible con las medidas ingresadas." : "Completa los datos del trabajo."}
-            </div>
-          )}
+          <div className="small" style={{ marginTop: 8 }}>
+            {top ? (
+              <>
+                <div><strong>{top.name}</strong></div>
+                <div>{reachLine(top, jobParams.heightM)}</div>
+              </>
+            ) : (
+              "Completa datos del trabajo."
+            )}
+          </div>
         </div>
       </div>
     </div>
