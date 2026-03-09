@@ -1,6 +1,3 @@
-from pathlib import Path
-
-app_code = r'''import React, { useMemo, useState } from "react";
 
 /**
  * Recomendador Spider – VertiTek (v3.2)
