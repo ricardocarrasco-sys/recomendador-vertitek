@@ -703,9 +703,8 @@ export default function App() {
         contactEmail: String(contactEmail || "").trim(),
 
         rentalDays: quoteParams.rentalDays,
-        workSite: quoteParams.workSite,
-        deliveryWindow: quoteParams.deliveryWindowLabel,
-
+        jobLocation: quoteParams.workSite,
+        deliveryShift: quoteParams.deliveryWindowLabel,
         heightM: jobParams.heightM,
         reachM: jobParams.outreachM,
         slopeDeg: jobParams.slopeDeg,
