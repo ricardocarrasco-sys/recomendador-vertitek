@@ -9,7 +9,6 @@ import React, { useMemo, useState } from "react";
  * - WhatsApp como respaldo opcional
  */
 
-const BUILD_TAG = 
 
 const PSO_CATALOG = [
   {
