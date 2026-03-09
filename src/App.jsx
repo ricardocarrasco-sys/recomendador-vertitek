@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from "react";
 
 /**
- * Recomendador Spider – VertiTek (v2)
+ * Recomendador Spider – VertiTek (v3.1)
  * - Fotos eliminadas en esta etapa (el vendedor las solicita si aplica)
  * - Envío directo a Apptivo (Leads) vía /api/apptivo-lead
  * - WhatsApp queda como respaldo opcional
  */
+
+// Etiqueta visible para verificar que Vercel está sirviendo el build correcto.
+const BUILD_TAG = "ENVELOPE_V3.1 + ARRIENDO_V1 (2026-03-09)";
 
 const PSO_CATALOG = [
   { id:"pso-11bl", name:"PSO-11BL", maxWorkingHeightM:10.8, maxPlatformHeightM:8.8, maxOutreachM:6.2, outreachCapacityKg:120,
@@ -95,6 +98,48 @@ function reachAtHeight(model, heightM){
   return env[env.length-1].r;
 }
 
+
+// Hard constraints: si falla cualquiera, el modelo NO debe recomendarse.
+function hardFails(model, p){
+  const fails=[];
+  // Altura
+  if(p.heightM > model.maxWorkingHeightM + 1e-9) fails.push('altura');
+
+  // Alcance real a esa altura (según curva)
+  if(p.outreachM != null){
+    const allowed = reachAtHeight(model, p.heightM);
+    if(p.outreachM > allowed + 0.05) fails.push('alcance');
+  }
+
+  // Acceso (ancho) - solo si el cliente informó el ancho.
+  if(p.accessWidthCm != null){
+    if(p.accessWidthCm < model.minAccessWidthCm - 1e-9) fails.push('ancho');
+  }
+
+  // Altura de acceso (si se informó)
+  if(p.accessHeightCm != null){
+    const neededCm = Math.round((model.stowedHeightM || 0) * 100);
+    if(p.accessHeightCm < neededCm - 1e-9) fails.push('alto');
+  }
+
+  // Restricciones de ascensor (si aplica)
+  if(p.accessType === 'ascensor'){
+    const machineKg = Number(model.weightKg) || 0;
+    if(p.elevatorMaxKg != null && machineKg > p.elevatorMaxKg + 1e-9) fails.push('peso');
+
+    const needW = Math.round((model.stowedWidthM || 0) * 100);
+    const needD = Math.round((model.stowedLengthM || 0) * 100);
+    if(p.elevatorCabWidthCm != null && p.elevatorCabWidthCm < needW - 1e-9) fails.push('cabinaW');
+    if(p.elevatorCabDepthCm != null && p.elevatorCabDepthCm < needD - 1e-9) fails.push('cabinaD');
+  }
+
+  return fails;
+}
+
+function isEligible(model, p){
+  return hardFails(model, p).length === 0;
+}
+
 // Texto de ayuda para UI: alcance máximo a una altura, indicando carga según ficha.
 function reachLine(model, heightM){
   const h = Number(heightM||0);
@@ -107,15 +152,12 @@ function reachLine(model, heightM){
 function scoreModel(model,p){
   const reasons=[], warnings=[];
   let score=0;
-  // Elegible = cumple restricciones duras (altura, alcance a esa altura, acceso físico).
-  // Otras condiciones (interior/emisiones, etc.) solo afectan score/advertencias.
-  let eligible = true;
 
   if(p.heightM<=model.maxWorkingHeightM){
     const margin=model.maxWorkingHeightM-p.heightM;
     score+=40-clamp(margin*3,0,18);
     reasons.push(`Cumple altura (${model.maxWorkingHeightM}m ≥ ${p.heightM}m).`);
-  } else { score-=200; eligible=false; warnings.push(`No alcanza altura (${model.maxWorkingHeightM}m < ${p.heightM}m).`); }
+  } else { score-=200; warnings.push(`No alcanza altura (${model.maxWorkingHeightM}m < ${p.heightM}m).`); }
 
   if(p.outreachM===null){
     score+=6;
@@ -128,20 +170,19 @@ function scoreModel(model,p){
       reasons.push(`Cumple alcance a ${p.heightM}m (máx ~${allowed.toFixed(1)}m ≥ ${p.outreachM}m).`);
     } else {
       score-=40;
-      eligible=false;
       warnings.push(`Alcance insuficiente a ${p.heightM}m (máx ~${allowed.toFixed(1)}m < ${p.outreachM}m).`);
     }
   }
 
   if(p.accessWidthCm>=model.minAccessWidthCm){
     score+=22; reasons.push(`Pasa por acceso (ancho mín ${model.minAccessWidthCm}cm).`);
-  } else { score-=120; eligible=false; warnings.push(`No pasa por el acceso (ancho mín ${model.minAccessWidthCm}cm; disponible ${p.accessWidthCm}cm).`); }
+  } else { score-=120; warnings.push(`No pasa por el acceso (ancho mín ${model.minAccessWidthCm}cm; disponible ${p.accessWidthCm}cm).`); }
 
   if(p.accessHeightCm!=null){
     const neededCm=Math.round((model.stowedHeightM||0)*100);
     if(neededCm>0){
       if(p.accessHeightCm>=neededCm){ score+=10; reasons.push(`Altura de acceso OK (mín ${neededCm}cm).`); }
-      else { score-=90; eligible=false; warnings.push(`Altura de acceso insuficiente (mín ${neededCm}cm; disponible ${p.accessHeightCm}cm).`); }
+      else { score-=90; warnings.push(`Altura de acceso insuficiente (mín ${neededCm}cm; disponible ${p.accessHeightCm}cm).`); }
     }
   }
 
@@ -149,14 +190,14 @@ function scoreModel(model,p){
     if(p.elevatorMaxKg!=null){
       const machineKg=Number(model.weightKg)||0;
       if(p.elevatorMaxKg>=machineKg){ score+=8; reasons.push(`Ascensor soporta peso (equipo ${machineKg}kg ≤ máx ${p.elevatorMaxKg}kg).`); }
-      else { score-=140; eligible=false; warnings.push(`Ascensor NO soporta el peso (equipo ${machineKg}kg > máx ${p.elevatorMaxKg}kg).`); }
+      else { score-=140; warnings.push(`Ascensor NO soporta el peso (equipo ${machineKg}kg > máx ${p.elevatorMaxKg}kg).`); }
     }
     if(p.elevatorCabWidthCm!=null && p.elevatorCabDepthCm!=null){
       const needW=Math.round((model.stowedWidthM||0)*100);
       const needD=Math.round((model.stowedLengthM||0)*100);
-      if(p.elevatorCabWidthCm<needW){ score-=160; eligible=false; warnings.push(`Cabina: ancho insuficiente (mín ${needW}cm; disponible ${p.elevatorCabWidthCm}cm).`); }
+      if(p.elevatorCabWidthCm<needW){ score-=160; warnings.push(`Cabina: ancho insuficiente (mín ${needW}cm; disponible ${p.elevatorCabWidthCm}cm).`); }
       else { score+=6; reasons.push(`Cabina: ancho OK (mín ${needW}cm).`); }
-      if(p.elevatorCabDepthCm<needD){ score-=180; eligible=false; warnings.push(`Cabina: fondo insuficiente (mín ${needD}cm; disponible ${p.elevatorCabDepthCm}cm).`); }
+      if(p.elevatorCabDepthCm<needD){ score-=180; warnings.push(`Cabina: fondo insuficiente (mín ${needD}cm; disponible ${p.elevatorCabDepthCm}cm).`); }
       else { score+=6; reasons.push(`Cabina: fondo OK (mín ${needD}cm).`); }
     }
   }
@@ -180,7 +221,7 @@ function scoreModel(model,p){
     else { score-=6; warnings.push("Acceso negativo: PSO-11BL suele ser el más adecuado."); }
   }
 
-  return { score, reasons, warnings, eligible };
+  return { score, reasons, warnings };
 }
 
 function buildWhatsappText({company,contact,job,quote,rec,legalText}){
@@ -269,7 +310,7 @@ export default function App(){
     heightM:Number(heightM)||0,
     outreachM: outreachM===""?null:Number(outreachM),
     accessType,
-    accessWidthCm:Number(accessWidthCm)||0,
+    accessWidthCm: accessWidthCm===""?null:Number(accessWidthCm),
     accessHeightCm: accessHeightCm===""?null:Number(accessHeightCm),
     elevatorMaxKg: elevatorMaxKg===""?null:Number(elevatorMaxKg),
     elevatorCabWidthCm: elevatorCabWidthCm===""?null:Number(elevatorCabWidthCm),
@@ -284,18 +325,17 @@ export default function App(){
     deliveryWindowLabel: deliveryWindow==="nocturno" ? "Nocturno (17 a 9 hrs)" : "Diurno (9 a 17 hrs)",
   }),[rentalDays,workSite,deliveryWindow]);
 
-  const { recommendations, top, noMatch } = useMemo(()=>{
-    const scored = PSO_CATALOG.map(m=>({ ...m, ...scoreModel(m, jobParams) }));
-    const eligible = scored.filter(m=>m.eligible);
-    const list = (eligible.length ? eligible : scored)
-      .sort((a,b)=>b.score-a.score)
-      .slice(0,3);
-    return { recommendations: list, top: list[0] || null, noMatch: eligible.length === 0 };
+  const recommendations = useMemo(()=>{
+    const eligible = PSO_CATALOG.filter(m=>isEligible(m, jobParams));
+    const base = eligible.length ? eligible : PSO_CATALOG;
+    const scored = base.map(m=>({ ...m, ...scoreModel(m, jobParams) }));
+    return scored.sort((a,b)=>b.score-a.score).slice(0,3).map(x=>({ ...x, __noMatch: eligible.length===0 }));
   },[jobParams]);
+  const top = recommendations[0]||null;
 
   const isElevator = accessType==="ascensor";
 
-  const step1Ok = jobParams.heightM>0 && jobParams.accessWidthCm>0 && (!isElevator || (
+  const step1Ok = jobParams.heightM>0 && jobParams.accessWidthCm!=null && jobParams.accessWidthCm>0 && (!isElevator || (
     jobParams.accessHeightCm!=null && jobParams.accessHeightCm>0 &&
     jobParams.elevatorMaxKg!=null && jobParams.elevatorMaxKg>0 &&
     jobParams.elevatorCabWidthCm!=null && jobParams.elevatorCabWidthCm>0 &&
@@ -385,6 +425,7 @@ export default function App(){
       <div className="row">
         <div>
           <div className="h1">Recomendador Spider – Grupo Vertikal</div>
+          <div className="hint">Build: {BUILD_TAG}</div>
           <div className="sub">Recomendación técnica + cotización formal. (Fotos se solicitan luego si aplica.)</div>
         </div>
         <span className="badge">Paso {step} de 4</span>
