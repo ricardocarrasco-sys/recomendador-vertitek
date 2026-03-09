@@ -1170,9 +1170,4 @@ export default function App() {
     </div>
   );
 }
-'''
 
-out_path = Path("/mnt/data/App.v3.2.jsx")
-out_path.write_text(app_code, encoding="utf-8")
-
-str(out_path)
