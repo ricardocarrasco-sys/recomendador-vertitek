@@ -9,7 +9,7 @@ import React, { useMemo, useState } from "react";
  * - WhatsApp como respaldo opcional
  */
 
-const BUILD_TAG = "ENVELOPE_V3.2_FIX + HARD_FILTER + ARRIENDO_V1 (2026-03-09)";
+const BUILD_TAG = 
 
 const PSO_CATALOG = [
   {
