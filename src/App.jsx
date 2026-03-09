@@ -513,7 +513,7 @@ export default function App() {
   const [submitStatus, setSubmitStatus] = useState(null);
 
   // Trabajo
-  const [heightM, setHeightM] = useState(18);
+  const [heightM, setHeightM] = useState("");
   const [outreachM, setOutreachM] = useState("");
   const [accessType, setAccessType] = useState("puerta");
   const [accessWidthCm, setAccessWidthCm] = useState("");
@@ -748,7 +748,7 @@ export default function App() {
               <div className="cols2">
                 <div>
                   <label>Altura requerida (m) ⭐</label>
-                  <input type="number" min="1" value={heightM} onChange={(e) => setHeightM(e.target.value)} />
+                  <input type="number" min="1" value={heightM} onChange={(e) => setHeightM(e.target.value)} placeholder= "Ej: 11" />
                 </div>
 
                 <div>
