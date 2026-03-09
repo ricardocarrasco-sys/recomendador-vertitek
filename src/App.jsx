@@ -925,7 +925,8 @@ export default function App() {
                 Siguiente
               </button>
             ) : null}
-          </div> {/*
+          </div> 
+          
           <div className="card">
           <div style={{ fontWeight: 800 }}>Top sugerido</div>
           <div className="small" style={{ marginTop: 8 }}>
