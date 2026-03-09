@@ -107,12 +107,15 @@ function reachLine(model, heightM){
 function scoreModel(model,p){
   const reasons=[], warnings=[];
   let score=0;
+  // Elegible = cumple restricciones duras (altura, alcance a esa altura, acceso físico).
+  // Otras condiciones (interior/emisiones, etc.) solo afectan score/advertencias.
+  let eligible = true;
 
   if(p.heightM<=model.maxWorkingHeightM){
     const margin=model.maxWorkingHeightM-p.heightM;
     score+=40-clamp(margin*3,0,18);
     reasons.push(`Cumple altura (${model.maxWorkingHeightM}m ≥ ${p.heightM}m).`);
-  } else { score-=200; warnings.push(`No alcanza altura (${model.maxWorkingHeightM}m < ${p.heightM}m).`); }
+  } else { score-=200; eligible=false; warnings.push(`No alcanza altura (${model.maxWorkingHeightM}m < ${p.heightM}m).`); }
 
   if(p.outreachM===null){
     score+=6;
@@ -125,19 +128,20 @@ function scoreModel(model,p){
       reasons.push(`Cumple alcance a ${p.heightM}m (máx ~${allowed.toFixed(1)}m ≥ ${p.outreachM}m).`);
     } else {
       score-=40;
+      eligible=false;
       warnings.push(`Alcance insuficiente a ${p.heightM}m (máx ~${allowed.toFixed(1)}m < ${p.outreachM}m).`);
     }
   }
 
   if(p.accessWidthCm>=model.minAccessWidthCm){
     score+=22; reasons.push(`Pasa por acceso (ancho mín ${model.minAccessWidthCm}cm).`);
-  } else { score-=120; warnings.push(`No pasa por el acceso (ancho mín ${model.minAccessWidthCm}cm; disponible ${p.accessWidthCm}cm).`); }
+  } else { score-=120; eligible=false; warnings.push(`No pasa por el acceso (ancho mín ${model.minAccessWidthCm}cm; disponible ${p.accessWidthCm}cm).`); }
 
   if(p.accessHeightCm!=null){
     const neededCm=Math.round((model.stowedHeightM||0)*100);
     if(neededCm>0){
       if(p.accessHeightCm>=neededCm){ score+=10; reasons.push(`Altura de acceso OK (mín ${neededCm}cm).`); }
-      else { score-=90; warnings.push(`Altura de acceso insuficiente (mín ${neededCm}cm; disponible ${p.accessHeightCm}cm).`); }
+      else { score-=90; eligible=false; warnings.push(`Altura de acceso insuficiente (mín ${neededCm}cm; disponible ${p.accessHeightCm}cm).`); }
     }
   }
 
@@ -145,14 +149,14 @@ function scoreModel(model,p){
     if(p.elevatorMaxKg!=null){
       const machineKg=Number(model.weightKg)||0;
       if(p.elevatorMaxKg>=machineKg){ score+=8; reasons.push(`Ascensor soporta peso (equipo ${machineKg}kg ≤ máx ${p.elevatorMaxKg}kg).`); }
-      else { score-=140; warnings.push(`Ascensor NO soporta el peso (equipo ${machineKg}kg > máx ${p.elevatorMaxKg}kg).`); }
+      else { score-=140; eligible=false; warnings.push(`Ascensor NO soporta el peso (equipo ${machineKg}kg > máx ${p.elevatorMaxKg}kg).`); }
     }
     if(p.elevatorCabWidthCm!=null && p.elevatorCabDepthCm!=null){
       const needW=Math.round((model.stowedWidthM||0)*100);
       const needD=Math.round((model.stowedLengthM||0)*100);
-      if(p.elevatorCabWidthCm<needW){ score-=160; warnings.push(`Cabina: ancho insuficiente (mín ${needW}cm; disponible ${p.elevatorCabWidthCm}cm).`); }
+      if(p.elevatorCabWidthCm<needW){ score-=160; eligible=false; warnings.push(`Cabina: ancho insuficiente (mín ${needW}cm; disponible ${p.elevatorCabWidthCm}cm).`); }
       else { score+=6; reasons.push(`Cabina: ancho OK (mín ${needW}cm).`); }
-      if(p.elevatorCabDepthCm<needD){ score-=180; warnings.push(`Cabina: fondo insuficiente (mín ${needD}cm; disponible ${p.elevatorCabDepthCm}cm).`); }
+      if(p.elevatorCabDepthCm<needD){ score-=180; eligible=false; warnings.push(`Cabina: fondo insuficiente (mín ${needD}cm; disponible ${p.elevatorCabDepthCm}cm).`); }
       else { score+=6; reasons.push(`Cabina: fondo OK (mín ${needD}cm).`); }
     }
   }
@@ -176,7 +180,7 @@ function scoreModel(model,p){
     else { score-=6; warnings.push("Acceso negativo: PSO-11BL suele ser el más adecuado."); }
   }
 
-  return { score, reasons, warnings };
+  return { score, reasons, warnings, eligible };
 }
 
 function buildWhatsappText({company,contact,job,quote,rec,legalText}){
@@ -280,8 +284,14 @@ export default function App(){
     deliveryWindowLabel: deliveryWindow==="nocturno" ? "Nocturno (17 a 9 hrs)" : "Diurno (9 a 17 hrs)",
   }),[rentalDays,workSite,deliveryWindow]);
 
-  const recommendations = useMemo(()=>PSO_CATALOG.map(m=>({...m,...scoreModel(m,jobParams)})).sort((a,b)=>b.score-a.score).slice(0,3),[jobParams]);
-  const top = recommendations[0]||null;
+  const { recommendations, top, noMatch } = useMemo(()=>{
+    const scored = PSO_CATALOG.map(m=>({ ...m, ...scoreModel(m, jobParams) }));
+    const eligible = scored.filter(m=>m.eligible);
+    const list = (eligible.length ? eligible : scored)
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,3);
+    return { recommendations: list, top: list[0] || null, noMatch: eligible.length === 0 };
+  },[jobParams]);
 
   const isElevator = accessType==="ascensor";
 
