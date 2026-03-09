@@ -724,7 +724,6 @@ export default function App() {
       <div className="row">
         <div>
           <div className="h1">Recomendador Spider – Grupo Vertikal</div>
-          <div className="hint">Build: {BUILD_TAG}</div>
           <div className="sub">Recomendación técnica + cotización formal. (Fotos se solicitan luego si aplica.)</div>
         </div>
         <span className="badge">Paso {step} de 4</span>
