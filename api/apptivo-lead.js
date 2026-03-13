@@ -32,9 +32,9 @@ function tryParseJsonString(s) {
   }
 }
 
-// Apptivo webLayout labels often come as a JSON string with modifiedLabel/originalLabel
 function labelToText(rawLabel) {
   if (!rawLabel) return "";
+
   if (typeof rawLabel === "string") {
     const parsed = tryParseJsonString(rawLabel);
     if (parsed && typeof parsed === "object") {
@@ -44,12 +44,14 @@ function labelToText(rawLabel) {
     }
     return rawLabel.trim();
   }
+
   if (typeof rawLabel === "object") {
     const m = String(rawLabel.modifiedLabel || "").trim();
     const o = String(rawLabel.originalLabel || "").trim();
     const t = String(rawLabel.text || rawLabel.label || rawLabel.name || "").trim();
     return m || o || t || "";
   }
+
   return "";
 }
 
@@ -624,6 +626,7 @@ export default async function handler(req, res) {
       mappedCustomFields: customAttributes.length,
       missingCustomFieldLabels: missing,
       matched,
+      customAttributesSent: customAttributes,
       normalizedInput: {
         companyName,
         companyRut,
