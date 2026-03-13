@@ -283,7 +283,6 @@ async function getLeadsConfig({ apiKey, accessKey }) {
   return data;
 }
 
-// Labels as they exist in your Apptivo webLayout (Spanish)
 const TARGET_FIELDS = [
   { wanted: ["cliente", "nombre empresa", "empresa", "razon social", "razón social"], key: "companyName" },
   { wanted: ["rut", "rut empresa", "rut cliente", "rol unico tributario", "rol único tributario"], key: "companyRut" },
@@ -435,10 +434,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Correo inválido." });
     }
 
-    if (!companyRut) {
-      return res.status(400).json({ ok: false, error: "Falta el RUT de la empresa." });
-    }
-
     if (!isValidRut(companyRut)) {
       return res.status(400).json({
         ok: false,
@@ -573,37 +568,29 @@ export default async function handler(req, res) {
       String(b.legalText || ""),
     ].filter(Boolean).join("\n");
 
-const leadData = {
-  firstName,
-  lastName: lastName || firstName || companyName,
-  description: desc,
-  emailAddresses: [
-    {
-      emailAddress: contactEmail,
-      emailTypeCode: "BUSINESS",
-      emailType: "Business",
-      id: "cont_email_input",
-    },
-  ],
-  phoneNumbers: [
-    {
-      phoneNumber: contactPhone,
-      phoneTypeCode: "PHONE_MOBILE",
-      phoneType: "Mobile",
-      id: "lead_phone_input",
-    },
-  ],
-  customAttributes,
-};  
-    
-      phoneNumber: contactPhone,
-      phoneTypeCode: "PHONE_MOBILE",
-      phoneType: "Mobile",
-      id: "lead_phone_input",
-    },
-  ],
-  customAttributes,
-};
+    const leadData = {
+      firstName,
+      lastName: lastName || firstName || companyName,
+      description: desc,
+      emailAddresses: [
+        {
+          emailAddress: contactEmail,
+          emailTypeCode: "BUSINESS",
+          emailType: "Business",
+          id: "cont_email_input",
+        },
+      ],
+      phoneNumbers: [
+        {
+          phoneNumber: contactPhone,
+          phoneTypeCode: "PHONE_MOBILE",
+          phoneType: "Mobile",
+          id: "lead_phone_input",
+        },
+      ],
+      customAttributes,
+    };
+
     const url = new URL("https://api.apptivo.com/app/dao/v6/leads");
     url.searchParams.set("a", "save");
     url.searchParams.set("apiKey", apiKey);
@@ -619,6 +606,8 @@ const leadData = {
         error: "Apptivo API error",
         status: resp.status,
         body: text,
+        matched,
+        missingCustomFieldLabels: missing,
       });
     }
 
