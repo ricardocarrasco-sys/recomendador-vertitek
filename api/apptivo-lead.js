@@ -573,29 +573,37 @@ export default async function handler(req, res) {
       String(b.legalText || ""),
     ].filter(Boolean).join("\n");
 
-    const leadData = {
-      firstName,
-      lastName: lastName || firstName || companyName,
-      description: desc,
-      emailAddresses: [
-        {
-          emailAddress: contactEmail,
-          emailTypeCode: "BUSINESS",
-          emailType: "Business",
-          id: "cont_email_input",
-        },
-      ],
-      phoneNumbers: [
-        {
-          phoneNumber: contactPhone,
-          phoneTypeCode: "PHONE_MOBILE",
-          phoneType: "Mobile",
-          id: "lead_phone_input",
-        },
-      ],
-      customAttributes,
-    };
+   const leadData = {
+  firstName,
+  lastName: lastName || firstName || companyName,
 
+  // respaldo adicional para que Apptivo tenga estos datos también como raíz
+  companyName,
+  company: companyName,
+  customerName: companyName,
+
+  taxId: companyRut,
+  rut: companyRut,
+
+  description: desc,
+  emailAddresses: [
+    {
+      emailAddress: contactEmail,
+      emailTypeCode: "BUSINESS",
+      emailType: "Business",
+      id: "cont_email_input",
+    },
+  ],
+  phoneNumbers: [
+    {
+      phoneNumber: contactPhone,
+      phoneTypeCode: "PHONE_MOBILE",
+      phoneType: "Mobile",
+      id: "lead_phone_input",
+    },
+  ],
+  customAttributes,
+};
     const url = new URL("https://api.apptivo.com/app/dao/v6/leads");
     url.searchParams.set("a", "save");
     url.searchParams.set("apiKey", apiKey);
