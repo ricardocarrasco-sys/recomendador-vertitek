@@ -177,6 +177,7 @@ function normalizeSelectValue(v) {
 
 function mkCustomAttr(meta, value) {
   const id = String(meta.id);
+  const rawType = String(meta.type || "");
   const t = inferAttrTypeFromId(id, meta.type);
 
   let v = value;
@@ -189,6 +190,16 @@ function mkCustomAttr(meta, value) {
 
   if (String(v).trim() === "") return null;
 
+  // Para campos Standard de Apptivo, mandar estructura simple
+  if (rawType.toLowerCase() === "standard" || id === "customer_attr" || id === "company_attr") {
+    return {
+      customAttributeId: id,
+      customAttributeType: "Standard",
+      customAttributeValue: v,
+      attributeValues: [],
+    };
+  }
+
   return {
     customAttributeId: id,
     customAttributeType: t,
@@ -198,7 +209,6 @@ function mkCustomAttr(meta, value) {
     [id]: v,
   };
 }
-
 function extractFieldsFromWebLayout(cfg) {
   const parsed = tryParseJsonString(cfg?.webLayout);
   if (!parsed) return [];
