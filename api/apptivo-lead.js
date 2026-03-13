@@ -595,7 +595,7 @@ const leadData = {
   ],
   customAttributes,
 };  
-    {
+    
       phoneNumber: contactPhone,
       phoneTypeCode: "PHONE_MOBILE",
       phoneType: "Mobile",
