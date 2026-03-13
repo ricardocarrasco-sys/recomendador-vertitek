@@ -573,18 +573,9 @@ export default async function handler(req, res) {
       String(b.legalText || ""),
     ].filter(Boolean).join("\n");
 
-   const leadData = {
+const leadData = {
   firstName,
   lastName: lastName || firstName || companyName,
-
-  // respaldo adicional para que Apptivo tenga estos datos también como raíz
-  companyName,
-  company: companyName,
-  customerName: companyName,
-
-  taxId: companyRut,
-  rut: companyRut,
-
   description: desc,
   emailAddresses: [
     {
@@ -595,6 +586,15 @@ export default async function handler(req, res) {
     },
   ],
   phoneNumbers: [
+    {
+      phoneNumber: contactPhone,
+      phoneTypeCode: "PHONE_MOBILE",
+      phoneType: "Mobile",
+      id: "lead_phone_input",
+    },
+  ],
+  customAttributes,
+};  
     {
       phoneNumber: contactPhone,
       phoneTypeCode: "PHONE_MOBILE",
