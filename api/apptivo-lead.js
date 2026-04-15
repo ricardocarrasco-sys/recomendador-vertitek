@@ -1,5 +1,5 @@
 // api/apptivo-lead.js
-// VertiTek Recomendador -> Apptivo Leads
+// VertiTek Recomendador -> Apptivo Opportunities
 // - Uses Apptivo getConfigData.webLayout to discover field IDs by their (modified) labels
 // - Maps payload fields into Apptivo customAttributes and standard contact fields
 // Debug: GET /api/apptivo-lead?debug=1
@@ -270,11 +270,11 @@ function buildIndex(fields) {
   return byNorm;
 }
 
-async function getLeadsConfig({ apiKey, accessKey }) {
+async function getOpportunitiesConfig({ apiKey, accessKey }) {
   const now = Date.now();
   if (cachedConfig && now - cachedAt < CACHE_TTL_MS) return cachedConfig;
 
-  const url = new URL("https://api.apptivo.com/app/dao/v6/leads");
+  const url = new URL("https://api.apptivo.com/app/dao/v6/opportunities");
   url.searchParams.set("a", "getConfigData");
   url.searchParams.set("apiKey", apiKey);
   url.searchParams.set("accessKey", accessKey);
@@ -337,7 +337,7 @@ export default async function handler(req, res) {
 
   if (req.method === "GET" && String(req.query?.debug || "") === "1") {
     try {
-      const cfg = await getLeadsConfig({ apiKey, accessKey });
+      const cfg = await getOpportunitiesConfig({ apiKey, accessKey });
       const fields = extractFieldsFromWebLayout(cfg);
       return res.status(200).json({
         ok: true,
@@ -454,7 +454,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const cfg = await getLeadsConfig({ apiKey, accessKey });
+    const cfg = await getOpportunitiesConfig({ apiKey, accessKey });
     const fields = extractFieldsFromWebLayout(cfg);
     const byNorm = buildIndex(fields);
 
@@ -543,7 +543,7 @@ export default async function handler(req, res) {
     const { firstName, lastName } = splitName(contactName);
 
     const desc = [
-      "Solicitud de cotización desde Recomendador Spider (VertiTek)",
+      "Solicitud de cotización desde Recomendador Spider (VertiTek) - Opportunity",
       "",
       `EMPRESA: ${companyName}`,
       `RUT: ${companyRut}`,
@@ -580,7 +580,7 @@ export default async function handler(req, res) {
       String(b.legalText || ""),
     ].filter(Boolean).join("\n");
 
-    const leadData = {
+    const opportunityData = {
       firstName,
       lastName: lastName || firstName || companyName,
       description: desc,
@@ -603,11 +603,11 @@ export default async function handler(req, res) {
       customAttributes,
     };
 
-    const url = new URL("https://api.apptivo.com/app/dao/v6/leads");
+    const url = new URL("https://api.apptivo.com/app/dao/v6/opportunities");
     url.searchParams.set("a", "save");
     url.searchParams.set("apiKey", apiKey);
     url.searchParams.set("accessKey", accessKey);
-    url.searchParams.set("leadData", JSON.stringify(leadData));
+    url.searchParams.set("opportunityData", JSON.stringify(opportunityData));
 
     const resp = await fetch(url.toString(), { method: "GET" });
     const text = await resp.text();
