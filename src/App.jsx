@@ -5,7 +5,7 @@ import React, { useMemo, useState } from "react";
  * - Hard filter real: NO recomienda modelos que no cumplan alcance/altura/acceso (usa working envelope)
  * - Parseo numérico robusto: acepta coma decimal (12,5) y evita NaN
  * - Cotización: días de arriendo + lugar + horario (diurno/nocturno)
- * - Envío directo a Apptivo (Leads) vía /api/apptivo-lead
+ * - Envío directo a Apptivo (Opportunities) vía /api/apptivo-lead
  * - WhatsApp como respaldo opcional
  */
 
@@ -381,6 +381,7 @@ export default function App() {
   }, [slopeValue]);
 
   const outreachInvalid = outreachM !== "" && toNum(outreachM) === null;
+  const companyRutValid = validateRut(companyRut);
 
   const jobParams = useMemo(
     () => ({
@@ -435,7 +436,7 @@ export default function App() {
 
   const step3Ok =
     companyName.trim().length >= 2 &&
-    (companyRut.trim() === "" || validateRut(companyRut)) &&
+    companyRutValid &&
     contactName.trim().length >= 2 &&
     normalizePhone(contactPhone).length >= 8 &&
     isValidEmail(contactEmail) &&
@@ -450,6 +451,7 @@ export default function App() {
     try {
       setSubmitStatus({ kind: "loading", msg: "Enviando solicitud..." });
       if (!top) throw new Error("No hay recomendación compatible aún.");
+      if (!companyRutValid) throw new Error("Debes ingresar un RUT empresa válido.");
 
       const payload = {
         companyName,
@@ -624,8 +626,13 @@ export default function App() {
                   <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
                 </div>
                 <div>
-                  <label>RUT empresa (opcional)</label>
+                  <label>RUT empresa ⭐</label>
                   <input value={formatRut(companyRut)} onChange={(e) => setCompanyRut(e.target.value)} placeholder="76.123.456-7" />
+                  {companyRut.trim() !== "" && !companyRutValid ? (
+                    <div className="help" style={{ color: "#b00020" }}>
+                      Ingresa un RUT válido (ej: 76.123.456-7).
+                    </div>
+                  ) : null}
                 </div>
                 <div>
                   <label>Nombre contacto ⭐</label>
