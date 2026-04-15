@@ -295,6 +295,57 @@ async function getOpportunitiesConfig({ apiKey, accessKey }) {
   return data;
 }
 
+function findFirstObjectByKeys(root, requiredKeys) {
+  const stack = [root];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur) continue;
+
+    if (Array.isArray(cur)) {
+      for (const it of cur) stack.push(it);
+      continue;
+    }
+
+    if (typeof cur !== "object") continue;
+
+    if (requiredKeys.every((k) => Object.prototype.hasOwnProperty.call(cur, k))) {
+      return cur;
+    }
+
+    for (const v of Object.values(cur)) stack.push(v);
+  }
+  return null;
+}
+
+function pickDefaultSalesStage(cfg) {
+  const candidate = findFirstObjectByKeys(cfg, ["salesStageId", "salesStageName"]);
+
+  if (!candidate) return { salesStageId: null, salesStageName: "" };
+
+  const salesStageId = candidate.salesStageId ?? candidate.id ?? null;
+  const salesStageName = candidate.salesStageName ?? candidate.name ?? "";
+
+  return {
+    salesStageId,
+    salesStageName: String(salesStageName || "").trim(),
+  };
+}
+
+function pickDefaultCurrencyCode(cfg) {
+  const candidate = findFirstObjectByKeys(cfg, ["currencyCode"]);
+
+  return String(candidate?.currencyCode || "USD").trim() || "USD";
+}
+
+function formatCloseDate(daysFromNow = 30) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${mm}/${dd}/${yyyy}`;
+}
+
 const TARGET_FIELDS = [
   { wanted: ["cliente", "nombre empresa", "empresa", "razon social", "razón social"], key: "companyName" },
   { wanted: ["rut", "rut empresa", "rut cliente", "rol unico tributario", "rol único tributario"], key: "companyRut" },
@@ -457,6 +508,8 @@ export default async function handler(req, res) {
     const cfg = await getOpportunitiesConfig({ apiKey, accessKey });
     const fields = extractFieldsFromWebLayout(cfg);
     const byNorm = buildIndex(fields);
+    const { salesStageId, salesStageName } = pickDefaultSalesStage(cfg);
+    const currencyCode = pickDefaultCurrencyCode(cfg);
 
     const interiorExterior = firstNonEmpty(
       b.interiorExterior,
@@ -581,6 +634,13 @@ export default async function handler(req, res) {
     ].filter(Boolean).join("\n");
 
     const opportunityData = {
+      opportunityName: `${companyName} - ${contactName}`.trim(),
+      salesStageId,
+      salesStageName,
+      probability: null,
+      closeDate: formatCloseDate(30),
+      amount: 0,
+      currencyCode,
       firstName,
       lastName: lastName || firstName || companyName,
       description: desc,
@@ -628,6 +688,24 @@ export default async function handler(req, res) {
       data = JSON.parse(text);
     } catch {
       data = { raw: text };
+    }
+
+    const returnMessage = String(data?.returnMessage || data?.message || "").toLowerCase();
+    const returnCode = String(data?.returnCode || "");
+    const failedByBody =
+      data?.success === false ||
+      data?.ok === false ||
+      (returnCode && !["0", "200", "2000"].includes(returnCode)) ||
+      (returnMessage && /(error|invalid|required|failed|exception)/.test(returnMessage) && !/success/.test(returnMessage));
+
+    if (failedByBody) {
+      return res.status(502).json({
+        ok: false,
+        error: "Apptivo save failed",
+        apptivo: data,
+        matched,
+        missingCustomFieldLabels: missing,
+      });
     }
 
     return res.status(200).json({
